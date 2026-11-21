@@ -1,0 +1,99 @@
+.logo {
+    height: 50px;
+    max-width: 220px;
+    object-fit: contain;
+}
+
+.project-card {
+    margin-bottom: 15px;
+}
+
+.project-card .card {
+    height: 100%;
+}
+
+.project-path {
+    overflow-wrap: anywhere;
+    font-size: .82rem;
+}
+
+/* Both Monaco instances need an explicit height, including inside hidden modals. */
+.editor,
+#editor,
+#editorGit {
+    height: 390px;
+    min-height: 320px;
+    width: 100%;
+    position: relative;
+}
+
+.modal-body {
+    min-height: 0;
+}
+
+.editor-fallback {
+    display: none;
+    width: 100%;
+    min-height: 320px;
+    resize: vertical;
+    font-family: Consolas, monospace;
+    font-size: 14px;
+}
+
+.modal-dialog.modal-lg {
+    max-width: min(920px, calc(100vw - 24px));
+}
+
+.editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+    padding: .55rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.editor-toolbar .btn {
+    white-space: nowrap;
+}
+
+.editor-shell {
+    border: 1px solid #ced4da;
+    border-radius: .45rem;
+    overflow: hidden;
+}
+
+.editor-status {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .35rem .7rem;
+    background: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+    font-size: .78rem;
+    color: #667085;
+}
+
+.modal-dialog {
+    max-width: 920px;
+}
+
+.empty-search {
+    cursor: pointer;
+    border: 1px dashed #adb5bd;
+}
+
+@media (max-width: 576px) {
+
+    .editor,
+    #editor,
+    #editorGit {
+        height: 320px;
+        min-height: 320px;
+    }
+
+    .logo {
+        height: 40px;
+    }
+}

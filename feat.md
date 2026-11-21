@@ -1,0 +1,14 @@
+- check if git bash is installed or not
+- check if composer is installed or not
+- LICENSE, readme, changes, security, .gitignore
+- Clone a Repo
+- Pull/Fetch a Repo
+- Backup using .zip or .mxd file / restore
+- store meta data.
+- setting for dashboard - to give access to github/lab/bitbucket
+- settings for each project
+- remove a project
+- local versioning of projects(if possible)
+- broiler plate
+- themes
+- blank framework projects: laravel, yii, cakephp, etc.
