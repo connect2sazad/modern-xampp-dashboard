@@ -211,14 +211,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['action'] ?? ''),
         }
     }
 }
-$projects = array_filter(glob($htdocsDir . DIRECTORY_SEPARATOR . '*') ?: [], 'is_dir');
-$projects = array_values(array_filter($projects, function ($p) {
-    return !in_array(strtolower(basename($p)), ['dashboard', '.', '..'], true);
+// Fast index: enumerate folder names only; defer disk and database scans to AJAX.
+$allProjects = array_values(array_filter(glob($htdocsDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) ?: [], static function ($path) {
+    return !in_array(strtolower(basename($path)), ['dashboard', '.', '..'], true) && !is_link($path);
 }));
-natcasesort($projects);
-$projectMeta=dashJson('projects');
-$dbRequested=[];foreach($projects as $projectPath){foreach(dashDbNames($projectMeta[basename($projectPath)]??[]) as $db)$dbRequested[]=$db;}
-$dbSizes=dashDbSizes(array_unique($dbRequested));
+usort($allProjects, static fn($a, $b) => strnatcasecmp(basename($a), basename($b)));
+$projectMeta = dashJson('projects');
+$searchTerm = trim((string)($_GET['q'] ?? ''));
+$searchTerm = substr($searchTerm, 0, 100);
+$letter = strtoupper(trim((string)($_GET['letter'] ?? '')));
+if (!preg_match('/^(?:[A-Z]|#)$/', $letter)) $letter = '';
+$lettersAvailable = [];
+foreach ($allProjects as $path) {
+    $first = strtoupper(substr(basename($path), 0, 1));
+    $lettersAvailable[preg_match('/^[A-Z]$/', $first) ? $first : '#'] = true;
+}
+$projects = array_values(array_filter($allProjects, static function ($path) use ($searchTerm, $letter) {
+    $name = basename($path);
+    if ($searchTerm !== '' && stripos($name, $searchTerm) === false) return false;
+    if ($letter !== '') {
+        $first = strtoupper(substr($name, 0, 1));
+        $bucket = preg_match('/^[A-Z]$/', $first) ? $first : '#';
+        if ($bucket !== $letter) return false;
+    }
+    return true;
+}));
+$perPage = 12;
+$totalProjects = count($projects);
+$pageCount = max(1, (int)ceil($totalProjects / $perPage));
+$page = max(1, min($pageCount, (int)($_GET['page'] ?? 1)));
+$projects = array_slice($projects, ($page - 1) * $perPage, $perPage);
+function dashPageUrl(int $page, string $search, string $letter): string {
+    return 'index.php?' . http_build_query(array_filter(['page' => $page, 'q' => $search, 'letter' => $letter], static fn($v) => $v !== ''));
+}
 ?>
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="<?= h($dashboardSettings['theme'] ?? 'light') ?>">
@@ -233,7 +258,13 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
 </head>
 
 <body>
-    <div class="container py-4">
+    <nav class="alphabet-nav" aria-label="Project alphabetical navigation">
+      <a href="<?= h(dashPageUrl(1, $searchTerm, '')) ?>" title="All projects" class="<?= $letter === '' ? 'active' : '' ?>">All</a>
+      <?php foreach (array_merge(['#'], range('A','Z')) as $ch): ?>
+        <a href="<?= h(dashPageUrl(1, $searchTerm, $ch)) ?>" class="<?= $letter === $ch ? 'active' : '' ?> <?= !isset($lettersAvailable[$ch]) ? 'empty-letter' : '' ?>" title="Projects starting with <?= h($ch) ?>"><?= h($ch) ?></a>
+      <?php endforeach; ?>
+    </nav>
+    <div class="container py-4 dashboard-main">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
             <a href="https://connect2sazad.github.io/" target="_blank"><img src="./storage/logo.png" alt="Logo" class="logo"></a>
             <div class="d-flex flex-wrap gap-2">
@@ -269,11 +300,11 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
             <div class="alert alert-danger" role="alert"><?= h($error) ?></div>
         <?php endif; ?>
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="mb-0">Your XAMPP Projects <span class="badge bg-secondary fs-6"><?= count($projects) ?></span></h4>
+            <h4 class="mb-0">Your XAMPP Projects <span class="badge bg-secondary fs-6"><?= $totalProjects ?></span></h4>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="showSearch">🔍 Search</button>
         </div>
-        <div id="searchBoxWrapper" class="mb-3" hidden>
-            <input type="search" id="projectSearch" class="form-control" placeholder="Search projects... (Ctrl + F)" autocomplete="off">
+        <div id="searchBoxWrapper" class="mb-3" <?= $searchTerm !== '' ? '' : 'hidden' ?>>
+            <input type="search" id="projectSearch" class="form-control" value="<?= h($searchTerm) ?>" placeholder="Search projects... (Ctrl + F)" autocomplete="off">
         </div>
         <div class="row" id="projectList">
             <?php foreach ($projects as $projectPath): $projectName = basename($projectPath); ?>
@@ -283,13 +314,12 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                             <?php
                               $is_git=is_dir($projectPath.DIRECTORY_SEPARATOR.'.git') || is_file($projectPath.DIRECTORY_SEPARATOR.'.git');
                               $info=$projectMeta[$projectName]??[];
-                              $bytes=dashFolderBytes($projectPath);$names=dashDbNames($info);$dbTotal=0;$allKnown=true;
-                              foreach($names as $db){if(!array_key_exists($db,$dbSizes)){$allKnown=false;break;}$dbTotal+=$dbSizes[$db];}
+                              $names=dashDbNames($info);
                             ?>
                             <h5><?= $is_git ? '<span title="Git repository" aria-label="Git repository">🔀</span> ' : '' ?><?= h($projectName) ?></h5>
                             <p class="project-path"><code><?= h($projectPath) ?></code><br>
-                              <span title="Recursive sum of regular file sizes; excludes symlink targets">📁 Files: <?= $bytes===null?'Unavailable':h(dashBytes($bytes)) ?></span><br>
-                              <span title="MySQL data and index sizes, if accessible">🗄️ Database: <?= !$names?'Not linked':($allKnown?h(dashBytes($dbTotal)):'Unavailable') ?></span>
+                              <span class="project-file-size" data-project="<?= h($projectName) ?>">📁 Files: Loading…</span><br>
+                              <span class="project-db-size" data-project="<?= h($projectName) ?>">🗄️ Database: <?= $names ? 'Loading…' : 'Not linked' ?></span>
                               <?php if($names): ?><br><small><?= h(implode(', ',$names)) ?></small><?php endif; ?>
                             </p>
                             <div class="d-flex flex-wrap gap-1">
@@ -306,6 +336,16 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                 </div>
             <?php endforeach; ?>
         </div>
+        <nav aria-label="Project pages" class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3 mb-4">
+          <small class="text-muted">Showing <?= $totalProjects ? (($page - 1) * $perPage + 1) : 0 ?>–<?= min($page * $perPage, $totalProjects) ?> of <?= $totalProjects ?> projects</small>
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>"><a class="page-link" href="<?= h(dashPageUrl(max(1, $page - 1), $searchTerm, $letter)) ?>">Previous</a></li>
+            <?php for ($n = max(1, $page - 2); $n <= min($pageCount, $page + 2); $n++): ?>
+              <li class="page-item <?= $n === $page ? 'active' : '' ?>"><a class="page-link" href="<?= h(dashPageUrl($n, $searchTerm, $letter)) ?>"><?= $n ?></a></li>
+            <?php endfor; ?>
+            <li class="page-item <?= $page >= $pageCount ? 'disabled' : '' ?>"><a class="page-link" href="<?= h(dashPageUrl(min($pageCount, $page + 1), $searchTerm, $letter)) ?>">Next</a></li>
+          </ul>
+        </nav>
         <div id="noResultsCard" class="card empty-search text-center mt-3" hidden>
             <div class="card-body">
                 <h5 id="noResultsTitle">No matching projects</h5>
@@ -717,19 +757,17 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
         }
 
         function filterProjects() {
-            const query = searchInput.value.trim().toLowerCase();
-            let matches = 0;
-            projectCards.forEach(card => {
-                const match = card.dataset.name.includes(query);
-                card.hidden = !match;
-                card.style.display = match ? '' : 'none';
-                if (match) matches++;
-            });
-            noResults.hidden = !query || matches > 0;
-            if (!noResults.hidden) document.getElementById('noResultsTitle').textContent = '➕ Create project: ' + query;
+            const query = searchInput.value.trim();
+            const url = new URL(window.location.href);
+            url.searchParams.delete('page');
+            url.searchParams.delete('letter');
+            if (query) url.searchParams.set('q', query);
+            else url.searchParams.delete('q');
+            window.location.assign(url.toString());
         }
+        let searchTimer;
         document.getElementById('showSearch').addEventListener('click', openSearch);
-        searchInput.addEventListener('input', filterProjects);
+        searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(filterProjects, 420); });
         noResults.addEventListener('click', () => {
             document.getElementById('projectName').value = searchInput.value.trim().replace(/[^a-zA-Z0-9_-]/g, '');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('blankProject')).show();
@@ -746,6 +784,33 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                 filterProjects();
             }
         });
+        // Measure only visible cards, asynchronously, after the page has rendered.
+        async function loadProjectSizes() {
+            const names = [...document.querySelectorAll('.project-file-size')].map(el => el.dataset.project);
+            if (!names.length) return;
+            try {
+                const response = await fetch('project_stats.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projects: names }),
+                    cache: 'no-store'
+                });
+                if (!response.ok) throw new Error('Statistics unavailable');
+                const stats = await response.json();
+                for (const name of names) {
+                    const file = document.querySelectorAll('.project-file-size');
+                    const db = document.querySelectorAll('.project-db-size');
+                    const f = [...file].find(el => el.dataset.project === name);
+                    const d = [...db].find(el => el.dataset.project === name);
+                    if (f) f.textContent = '📁 Files: ' + (stats[name]?.files ?? 'Unavailable');
+                    if (d) d.textContent = '🗄️ Database: ' + (stats[name]?.database ?? 'Unavailable');
+                }
+            } catch (e) {
+                document.querySelectorAll('.project-file-size').forEach(el => el.textContent = '📁 Files: Unavailable');
+                document.querySelectorAll('.project-db-size').forEach(el => { if (el.textContent.includes('Loading')) el.textContent = '🗄️ Database: Unavailable'; });
+            }
+        }
+        window.addEventListener('load', () => setTimeout(loadProjectSizes, 0));
         document.querySelectorAll('.launch-helper').forEach(button => {
             button.addEventListener('click', async () => {
                 try {
