@@ -1,16 +1,68 @@
 <!-- Generated from README.md by docs/build.ps1. -->
 <h1 id="modern-xampp-dashboard">Modern XAMPP Dashboard</h1>
-<p>Manage local PHP and HTML projects in XAMPP from one browser tab. Create or clone projects, install CMS and framework templates, edit files, run Composer, and make backups with their linked databases.</p>
+<p>A browser-based project manager for local PHP development. Start a WordPress site or framework project, open an existing Git repository, edit files, run Composer, and back up projects with their linked databases from one dashboard.</p>
+<p><img src="docs/screenshots/dashboard.png" alt="Modern XAMPP Dashboard showing project groups, starred projects, and quick actions" /></p>
 <h2 id="quick-start">Quick start</h2>
 <ol>
-<li>Place the dashboard in a <code>dashboard</code> folder inside your Apache document root, alongside your projects. Keep its <code>.htaccess</code> files.</li>
-<li>Start <strong>Apache</strong>, and start <strong>MySQL</strong> or <strong>MariaDB</strong> if you need databases.</li>
-<li>Open <a href="http://localhost/dashboard/">the dashboard</a>, using the port configured for Apache. Supported sibling project folders appear automatically.</li>
-<li>Use <strong>New Project</strong> to scaffold, clone, install, or import a project. Use <strong>Open</strong> on its card to launch the app.</li>
+<li>Place this repository in a <code>dashboard</code> folder inside your Apache document root, alongside your projects. Keep its <code>.htaccess</code> files.</li>
+<li>Start <strong>Apache</strong>. Start <strong>MySQL</strong> or <strong>MariaDB</strong> if you need database features.</li>
+<li>Open <a href="http://localhost/dashboard/">localhost/dashboard</a> using the port configured for Apache. Supported sibling project folders appear automatically.</li>
+<li>Use <strong>New Project</strong> to create, clone, install, or import a project. Click <strong>Open</strong> on a project card to launch the app.</li>
 </ol>
-<p>The dashboard is designed for local Apache and PHP 8.2 or newer on Windows, macOS, or Linux. Git, Composer, VS Code, and PHP extensions are needed only for the features that use them. Bootstrap and Monaco load from a CDN. Run the dashboard on a trusted local machine.</p>
+<p>The dashboard is designed for local Apache and PHP 8.2 or newer on Windows, macOS, or Linux. Git, Composer, VS Code, and PHP extensions are required only by the features that use them. The <a href="docs.php?page=setup">setup guide</a> covers prerequisites, common errors, and custom project paths.</p>
+<h2 id="explore-the-dashboard">Explore the dashboard</h2>
+<h3 id="organize-and-open-local-projects">Organize and open local projects</h3>
+<p>Switch between <strong>List</strong> and <strong>Tiles</strong>, search by project name, or use the alphabet rail. Star frequently used projects and group related folders with shared colors. A project can also have its own card color and notes.</p>
+<p>Each card provides quick access to the app, browser editor, Developer tools, and settings. The action menu opens the folder or VS Code, links to connected databases in phpMyAdmin, and handles exports and removal. File and database sizes load after the project list renders.</p>
+<h3 id="scaffold-frameworks-install-a-cms-or-clone-a-repository">Scaffold frameworks, install a CMS, or clone a repository</h3>
+<p><strong>New Project</strong> supports blank PHP starters, Git initialization, HTTPS Git cloning, and starter templates for Laravel, Yii 2 Basic, CakePHP, Symfony, and CodeIgniter 4. The dashboard detects a framework's public entry point so <strong>Open</strong> can send you to directories such as <code>public/</code>, <code>web/</code>, or <code>webroot/</code>.</p>
+<p><strong>Install CMS or Custom Template</strong> shows the source and streams progress. Once the files are installed, use <strong>Open</strong> or follow the template's setup instructions to finish configuring the CMS.</p>
+<p><img src="docs/screenshots/cms-installer.png" alt="CMS installer showing a WordPress selection and its official release ZIP source" /></p>
+<table>
+<thead>
+<tr>
+<th>Install method</th>
+<th>Built-in CMS templates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Release ZIP</td>
+<td>WordPress, Joomla, Grav</td>
+</tr>
+<tr>
+<td>Composer</td>
+<td>Drupal, Drupal CMS, Craft CMS, Kirby, Statamic, Concrete CMS, Silverstripe CMS, October CMS, TYPO3</td>
+</tr>
+<tr>
+<td>HTTPS Git</td>
+<td>ProcessWire, Backdrop CMS</td>
+</tr>
+</tbody>
+</table>
+<p>Save reusable <strong>custom CMS or framework templates</strong> in Settings. A template can use an HTTPS Git repository or a Composer package. You can specify a branch, tag, or version, set its public folder, and optionally install Composer dependencies after a Git clone.</p>
+<h3 id="edit-projects-in-the-browser">Edit projects in the browser</h3>
+<p>The workspace has an expandable Explorer, closeable tabs, syntax highlighting, and an indicator for unsaved changes. Create files and nested folders in the same dialog, rename entries, and preview saved PHP or HTML pages.</p>
+<ul>
+<li><strong>Ctrl+P</strong> finds a file by name or path.</li>
+<li><strong>Ctrl+S</strong> saves the active tab. <strong>Ctrl+Shift+S</strong> saves all edited tabs.</li>
+<li><strong>Ctrl+F</strong> finds text in the current file.</li>
+</ul>
+<p>The editor keeps drafts when you switch tabs and rejects saves that would overwrite a newer on-disk version. It falls back to plain text if Monaco cannot load.</p>
+<p><img src="docs/screenshots/workspace-editor.png" alt="Browser workspace editor with a project tree, PHP syntax highlighting, and file actions" /></p>
+<h3 id="diagnose-projects-and-run-composer">Diagnose projects and run Composer</h3>
+<p>The <strong>Developer</strong> panel shows the public entry point, PHP version, Composer lockfile and autoloader status, and missing declared PHP extensions. You can copy the app URL, project path, or terminal commands. Plain projects can also set a custom PHP or HTML launch file and run a PHP syntax check.</p>
+<p>For Composer projects, run <strong>Install</strong>, <strong>Update</strong>, <strong>Validate</strong>, <strong>Check platform</strong>, <strong>Outdated packages</strong>, or <strong>Audit dependencies</strong> and read the output in the browser. Project Settings can initialize Git on an existing project and reads the origin directly from the repository.</p>
+<p><img src="docs/screenshots/developer-tools.png" alt="Developer panel showing PHP and Composer diagnostics with dependency management actions" /></p>
+<h3 id="back-up-projects-and-restore-databases">Back up projects and restore databases</h3>
+<p>Create password-protected <strong>MXDP</strong> backups of project files and linked databases, or choose a database-only backup. The <strong>Backups</strong> page shows creation time, size, database inclusion, and protection. From there you can download, restore, or delete a saved archive.</p>
+<p><img src="docs/screenshots/backup-library.png" alt="Backups catalog listing saved MXDP archives, sizes, password protection, and restore actions" /></p>
+<p>Use <strong>Download ZIP + DB</strong> when you need an unencrypted ZIP export. Use <strong>New Project</strong> to restore an MXDP or import a ZIP, or drop one archive onto the dashboard. After an import or Git clone, the database setup dialog can restore selected SQL files into new databases and link them to the project. See the <a href="docs.php?page=backups">backup and database guide</a> for password, archive, and database requirements.</p>
+<h3 id="make-the-workspace-yours">Make the workspace yours</h3>
+<p>Preview a theme in Settings before saving. The catalog includes Blueprint, Vista Glass, iOS Frost, Cartoon, Windows XP, Deep Ocean, and more. Customize starter files for future projects and use the header's to-do button for a browser-local checklist.</p>
+<p><img src="docs/screenshots/theme-preview.png" alt="Dashboard settings with a live Cartoon theme preview and custom template controls" /></p>
 <h2 id="documentation">Documentation</h2>
-<p>Open <strong>Docs</strong> in the dashboard header to read the HTML guides in XAMPP. The Markdown sources are also available below.</p>
+<p>Open <strong>Docs</strong> in the dashboard to read the HTML guides in XAMPP.</p>
 <table>
 <thead>
 <tr>
@@ -21,24 +73,25 @@
 <tbody>
 <tr>
 <td><a href="docs.php?page=user-guide">User guide</a></td>
-<td>Navigation, project creation, CMS and frameworks, editors, Git, Composer, project groups, themes, and to-dos</td>
+<td>Project creation, CMS and frameworks, editing, Git, Composer, layout, themes, and to-dos</td>
 </tr>
 <tr>
 <td><a href="docs.php?page=backups">Backups and databases</a></td>
-<td>Linking databases, MXDP and ZIP, SQL imports, deletion, limits, and recovery</td>
+<td>MXDP and ZIP formats, restore, SQL import, and safe deletion</td>
 </tr>
 <tr>
 <td><a href="docs.php?page=setup">Setup and troubleshooting</a></td>
-<td>Prerequisites, PHP and Apache configuration, and what to check when a feature fails</td>
+<td>Prerequisites, permissions, configuration, and common errors</td>
 </tr>
 <tr>
 <td><a href="docs.php?page=maintainer">Maintainer reference</a></td>
-<td>Code layout, endpoints, persistent data, and verification</td>
+<td>Code layout, storage, endpoints, and verification</td>
 </tr>
 <tr>
 <td><a href="docs.php?page=upgrade">Upgrade guide</a></td>
-<td>Preserving projects, preferences, templates, and backups while updating</td>
+<td>Preserving settings, templates, and backups during updates</td>
 </tr>
 </tbody>
 </table>
+<p>Run the dashboard on a trusted local machine. The screenshots use sample projects.</p>
 <p>Created by <a href="https://connect2sazad.github.io/">connect2sazad</a>.</p>
