@@ -4,12 +4,12 @@ Manage local PHP and HTML projects in XAMPP from one browser tab. Create or clon
 
 ## Quick start
 
-1. Place the dashboard in `C:\xampp\htdocs\dashboard`. Keep its `.htaccess` files.
-2. Start **Apache** in the XAMPP Control Panel. Start **MySQL** if you need databases.
-3. Open [the dashboard](http://localhost/dashboard/). Existing supported folders under `C:\xampp\htdocs` appear automatically.
+1. Place the dashboard in a `dashboard` folder inside your Apache document root, alongside your projects. Keep its `.htaccess` files.
+2. Start **Apache**, and start **MySQL** or **MariaDB** if you need databases.
+3. Open [the dashboard](http://localhost/dashboard/), using the port configured for Apache. Supported sibling project folders appear automatically.
 4. Use **New Project** to scaffold, clone, install, or import a project. Use **Open** on its card to launch the app.
 
-This build uses the Windows XAMPP layout and PHP 8.2 or newer. Git, Composer, VS Code, and PHP extensions are needed only for the features that use them. Bootstrap and Monaco load from a CDN. Run the dashboard on a trusted local machine.
+The dashboard is designed for local Apache and PHP 8.2 or newer on Windows, macOS, or Linux. Git, Composer, VS Code, and PHP extensions are needed only for the features that use them. Bootstrap and Monaco load from a CDN. Run the dashboard on a trusted local machine.
 
 ## Documentation
 

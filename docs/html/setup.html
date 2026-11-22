@@ -1,9 +1,9 @@
 <!-- Generated from docs/SETUP_AND_TROUBLESHOOTING.md by docs/build.ps1. -->
 <h1 id="setup-and-troubleshooting">Setup and troubleshooting</h1>
 <p><a href="docs.php?page=overview">Documentation home</a></p>
-<h2 id="install-on-windows-xampp">Install on Windows XAMPP</h2>
+<h2 id="install-on-a-local-apache-server">Install on a local Apache server</h2>
 <ol>
-<li>Place the dashboard at <code>C:\xampp\htdocs\dashboard</code>. The supported project root is <code>C:\xampp\htdocs</code>. Existing apps such as phpMyAdmin stay in their own folders.</li>
+<li>Put the dashboard in a folder named <code>dashboard</code> inside your Apache document root. For example, on a standard Windows XAMPP installation use <code>C:\xampp\htdocs\dashboard</code>. On macOS or Linux, use the document root from your Apache or XAMPP configuration. The dashboard discovers projects in its parent directory by default.</li>
 <li>Keep the root <code>.htaccess</code> and the access rules under <code>storage/data</code> and <code>storage/broilers</code>. Apache must honor the files and allow local requests.</li>
 <li>Start Apache and open <a href="http://localhost/dashboard/">localhost/dashboard</a>. Start the XAMPP MySQL or MariaDB service if you need database features.</li>
 <li>Give the Apache account write access to <code>storage/data</code> and <code>storage/broilers</code>. Creating, editing, and removing projects also require write access to the relevant project directories or <code>htdocs</code>.</li>
@@ -57,7 +57,32 @@
 git --version
 composer --version
 </code></pre>
-<p>If you change the Windows PATH, restart Apache so it can pick up the change. Terminal availability alone does not confirm that Apache can launch the same command.</p>
+<p>On macOS or Linux, use <code>php --ini</code> and <code>php -m</code> from the PHP installation you intend to run. If you change the server account's PATH, restart Apache so it can pick up the change. Terminal availability alone does not confirm that Apache can launch the same command.</p>
+<h3 id="optional-server-environment-settings">Optional server environment settings</h3>
+<p>Set these as environment variables visible to the dashboard's PHP process when the default installation layout does not match your setup.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DASHBOARD_PROJECTS_ROOT</code></td>
+<td>Absolute project directory on disk. Apache must also serve those project folders as URL siblings of the dashboard for <strong>Open</strong> and <strong>Preview</strong> to work. The environment variable does not create an Apache alias.</td>
+</tr>
+<tr>
+<td><code>DASHBOARD_PHP_CLI</code></td>
+<td>Absolute path to the PHP CLI executable for syntax checks and the Windows Composer PHAR launcher</td>
+</tr>
+<tr>
+<td><code>DASHBOARD_PHPMYADMIN_URL</code></td>
+<td>Base URL of your phpMyAdmin installation, such as <code>/phpmyadmin/</code>, without a query string</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Open project folder</strong> uses Explorer on Windows, <code>open</code> on macOS, and <code>xdg-open</code> on Linux. These launch on the machine running Apache. They require a desktop session available to its account. Browser editing and project tools remain available on a local development server without a desktop session.</p>
 <h2 id="configure-database-access">Configure database access</h2>
 <p>The dashboard reads these optional fields from <code>storage/data/settings.json</code>. Merge the keys into your existing JSON document to preserve themes, defaults, and custom templates.</p>
 <pre><code class="language-json">{
@@ -79,7 +104,7 @@ composer --version
 <tbody>
 <tr>
 <td>Dashboard is unavailable</td>
-<td>Check Apache in XAMPP, the URL and port, and <code>C:\xampp\apache\logs\error.log</code>. There may be a port conflict or a PHP startup error.</td>
+<td>Check Apache, the URL and port, and the error log configured by Apache's <code>ErrorLog</code> directive. On Windows XAMPP the default is <code>C:\xampp\apache\logs\error.log</code>.</td>
 </tr>
 <tr>
 <td>Page appears unstyled or editor does not start</td>

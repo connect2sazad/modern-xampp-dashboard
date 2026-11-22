@@ -41,8 +41,7 @@ function dashDatabaseExists(PDO $pdo, string $name): bool {
 }
 
 function dashDatabaseClient(string $program, array $config, array $arguments, ?string $input, ?string $output): void {
-    $exe = dirname(__DIR__, 2) . '/mysql/bin/' . $program . '.exe';
-    if (!is_file($exe)) $exe = $program;
+    $exe = dashMysqlExecutable($program);
     $options = tempnam(DASH_DATA, 'mysql_');
     if ($options === false) throw new RuntimeException('Could not create database client settings.');
     $log = tmpfile();

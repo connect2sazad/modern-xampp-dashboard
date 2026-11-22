@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td>Editing</td>
-<td><code>editor.php</code> contains the Monaco UI. <code>file_api.php</code> implements list, read, save, create, rename, and delete.</td>
+<td><code>editor.php</code>, <code>editor.js</code>, and <code>editor.css</code> provide the editor workspace and text fallback. <code>file_api.php</code> handles browsing, search, and file operations.</td>
 </tr>
 <tr>
 <td>Backups and restore</td>
@@ -65,7 +65,7 @@
 </tr>
 <tr>
 <td><code>file_api.php</code></td>
-<td>GET supports list and read. JSON POST supports save, delete, rename, create file, and create folder with the session token.</td>
+<td>GET supports list, browse, search, and read. JSON POST supports save, delete, rename, create file, and create folder with the session token. The editor uses file version hashes to detect changes made after it opened a file.</td>
 </tr>
 <tr>
 <td><code>project_stats.php</code></td>

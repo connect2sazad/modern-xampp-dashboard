@@ -10,10 +10,11 @@ require_once __DIR__ . '/template_lib.php';
 require_once __DIR__ . '/project_preferences.php';
 $dashboardSettings = dashJson('settings');
 $installTemplates = dashTemplates();
-$htdocsDir = realpath('C:/xampp/htdocs');
-if ($htdocsDir === false || !is_dir($htdocsDir)) {
+try {
+    $htdocsDir = dashProjectsRoot();
+} catch (RuntimeException $e) {
     http_response_code(500);
-    exit('XAMPP htdocs directory not found. Check C:/xampp/htdocs.');
+    exit($e->getMessage());
 }
 if (empty($_SESSION['dashboard_csrf'])) {
     $_SESSION['dashboard_csrf'] = bin2hex(random_bytes(32));
@@ -390,7 +391,7 @@ function dashPageUrl(int $page, string $search, string $letter, bool $starred = 
                         <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#restoreMxdpModal" data-archive-kind="zip">Import a ZIP project</button></li>
                     </ul>
                 </div>
-                <a href="http://localhost/phpmyadmin/" class="btn btn-outline-primary" target="_blank" rel="noopener">🛢️ phpMyAdmin</a>
+                <a href="<?= h(dashPhpMyAdminUrl()) ?>" class="btn btn-outline-primary" target="_blank" rel="noopener">🛢️ phpMyAdmin</a>
                 <a href="./phpinfo.php" class="btn btn-outline-info" target="_blank" rel="noopener">📘 PHP Info</a>
                 <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#todoModal" title="To-do list" aria-label="Open to-do list">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -491,13 +492,13 @@ function dashPageUrl(int $page, string $search, string $letter, bool $starred = 
                                     <button type="button" class="btn btn-sm btn-outline-secondary project-more" data-bs-toggle="dropdown"
                                         aria-expanded="false" aria-label="More actions for <?= h($projectName) ?>">···</button>
                                     <ul class="dropdown-menu dropdown-menu-end shadow">
-                                        <li><button type="button" class="dropdown-item launch-helper" data-helper="explorer.php" data-project="<?= h($projectName) ?>">Open in Explorer</button></li>
+                                        <li><button type="button" class="dropdown-item launch-helper" data-helper="explorer.php" data-project="<?= h($projectName) ?>">Open project folder</button></li>
                                         <li><button type="button" class="dropdown-item launch-helper" data-helper="vscode.php" data-project="<?= h($projectName) ?>">Open in VS Code</button></li>
                                         <?php if ($names): ?>
                                             <li><hr class="dropdown-divider"></li>
                                             <li><h6 class="dropdown-header">Open in phpMyAdmin</h6></li>
                                             <?php foreach ($names as $database): ?>
-                                                <li><a class="dropdown-item" target="_blank" rel="noopener" href="../phpmyadmin/index.php?route=%2Fdatabase%2Fstructure&amp;db=<?= rawurlencode($database) ?>"><?= h($database) ?></a></li>
+                                                <li><a class="dropdown-item" target="_blank" rel="noopener" href="<?= h(dashPhpMyAdminUrl($database)) ?>"><?= h($database) ?></a></li>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
                                         <li><hr class="dropdown-divider"></li>

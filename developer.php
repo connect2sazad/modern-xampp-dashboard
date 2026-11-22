@@ -65,15 +65,16 @@ foreach (array_keys($requires) as $requirement) {
 $hasEnvTemplate = is_file($path . '/.env.example');
 $hasEnv = is_file($path . '/.env');
 $hasGit = file_exists($path . '/.git');
-$commands = ['Set-Location -LiteralPath ' . "'" . str_replace("'", "''", $path) . "'"];
+$commands = [PHP_OS_FAMILY === 'Windows'
+    ? 'Set-Location -LiteralPath ' . "'" . str_replace("'", "''", $path) . "'"
+    : 'cd ' . escapeshellarg($path)];
 if ($usesComposer) $commands[] = 'composer install';
 if ($hasDependencies) $commands[] = 'composer check-platform-reqs';
 if ($hasGit) $commands[] = 'git status';
 
 function lintProjectPhp(string $path, string $file): array {
     if (!function_exists('proc_open')) throw new RuntimeException('PHP process execution is disabled.');
-    $php = DIRECTORY_SEPARATOR === '\\' ? dirname(__DIR__, 2) . '/php/php.exe' : PHP_BINDIR . '/php';
-    if (!is_file($php)) $php = 'php';
+    $php = dashPhpCli();
     $log = tmpfile();
     if ($log === false) throw new RuntimeException('Could not open a lint log.');
     try {
@@ -222,7 +223,7 @@ function h(string $value): string {
         </div>
     </section>
     <?php endif; ?>
-    <h2 class="h5">PowerShell commands</h2>
+    <h2 class="h5">Terminal commands</h2>
     <ul class="list-group">
         <?php foreach ($commands as $index => $command): ?>
         <li class="list-group-item d-flex justify-content-between align-items-center gap-2">

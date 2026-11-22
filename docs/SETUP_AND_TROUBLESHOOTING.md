@@ -2,9 +2,9 @@
 
 [Documentation home](../README.md)
 
-## Install on Windows XAMPP
+## Install on a local Apache server
 
-1. Place the dashboard at `C:\xampp\htdocs\dashboard`. The supported project root is `C:\xampp\htdocs`. Existing apps such as phpMyAdmin stay in their own folders.
+1. Put the dashboard in a folder named `dashboard` inside your Apache document root. For example, on a standard Windows XAMPP installation use `C:\xampp\htdocs\dashboard`. On macOS or Linux, use the document root from your Apache or XAMPP configuration. The dashboard discovers projects in its parent directory by default.
 2. Keep the root `.htaccess` and the access rules under `storage/data` and `storage/broilers`. Apache must honor the files and allow local requests.
 3. Start Apache and open [localhost/dashboard](http://localhost/dashboard/). Start the XAMPP MySQL or MariaDB service if you need database features.
 4. Give the Apache account write access to `storage/data` and `storage/broilers`. Creating, editing, and removing projects also require write access to the relevant project directories or `htdocs`.
@@ -31,7 +31,19 @@ git --version
 composer --version
 ```
 
-If you change the Windows PATH, restart Apache so it can pick up the change. Terminal availability alone does not confirm that Apache can launch the same command.
+On macOS or Linux, use `php --ini` and `php -m` from the PHP installation you intend to run. If you change the server account's PATH, restart Apache so it can pick up the change. Terminal availability alone does not confirm that Apache can launch the same command.
+
+### Optional server environment settings
+
+Set these as environment variables visible to the dashboard's PHP process when the default installation layout does not match your setup.
+
+| Setting | Use |
+| --- | --- |
+| `DASHBOARD_PROJECTS_ROOT` | Absolute project directory on disk. Apache must also serve those project folders as URL siblings of the dashboard for **Open** and **Preview** to work. The environment variable does not create an Apache alias. |
+| `DASHBOARD_PHP_CLI` | Absolute path to the PHP CLI executable for syntax checks and the Windows Composer PHAR launcher |
+| `DASHBOARD_PHPMYADMIN_URL` | Base URL of your phpMyAdmin installation, such as `/phpmyadmin/`, without a query string |
+
+**Open project folder** uses Explorer on Windows, `open` on macOS, and `xdg-open` on Linux. These launch on the machine running Apache. They require a desktop session available to its account. Browser editing and project tools remain available on a local development server without a desktop session.
 
 ## Configure database access
 
@@ -52,7 +64,7 @@ These are the fallback values used for a default local XAMPP setup. Use your act
 
 | Symptom | What to check |
 | --- | --- |
-| Dashboard is unavailable | Check Apache in XAMPP, the URL and port, and `C:\xampp\apache\logs\error.log`. There may be a port conflict or a PHP startup error. |
+| Dashboard is unavailable | Check Apache, the URL and port, and the error log configured by Apache's `ErrorLog` directive. On Windows XAMPP the default is `C:\xampp\apache\logs\error.log`. |
 | Page appears unstyled or editor does not start | Check whether the browser can load the Bootstrap and Monaco CDN resources. Reload after connectivity returns. |
 | Apache displays a folder listing instead of the app | Open the app from the project card. Check **Developer → Web entry point**. A framework typically serves `public/`, `web/`, or `webroot/`. If Apache ignores the generated redirect, check `.htaccess` handling and `mod_rewrite`. |
 | **Open** is missing | Review the detected entry point in **Developer**. For a plain project, set a PHP or HTML **Launch file**. For a template, make sure installation finished and the public folder contains an index file. |

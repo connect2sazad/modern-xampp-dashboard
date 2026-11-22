@@ -33,7 +33,7 @@ try {
         dashRestore($manifest === null ? $path : $work . '/project.zip', dashProject($name, false));
         if ($manifest !== null) unlink($work . '/project.zip');
         dashMeta($name, ['created_at' => date(DATE_ATOM), 'kind' => 'restored']);
-    } elseif (!file_exists('C:/xampp/htdocs/' . $name)) {
+    } elseif (!file_exists(dashProjectsRoot() . DIRECTORY_SEPARATOR . $name)) {
         if (!mkdir(dashProject($name, false), 0755)) throw new RuntimeException('Could not create project directory.');
         dashMeta($name, ['created_at' => date(DATE_ATOM), 'kind' => 'restored']);
     } else {

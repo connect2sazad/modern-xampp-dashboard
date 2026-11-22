@@ -18,8 +18,7 @@ function runJob(array $command, string $stage, ?string $workingDirectory = null)
   foreach (explode(PATH_SEPARATOR, (string)getenv('PATH')) as $directory) {
    $phar = rtrim($directory, '"') . DIRECTORY_SEPARATOR . 'composer.phar';
    if (is_file($phar)) {
-    $php = PHP_SAPI === 'cli' ? PHP_BINARY : dirname(__DIR__, 2) . '/php/php.exe';
-    if (!is_file($php)) $php = 'php.exe';
+    $php = dashPhpCli();
     array_splice($command, 0, 1, [$php, $phar]);
     break;
    }

@@ -12,7 +12,7 @@ The dashboard is a PHP application served by XAMPP Apache. It uses JSON files fo
 | Shared PHP | `dashboard_lib.php` handles sessions, project and file path validation, metadata, themes, Apache public paths, archive primitives, and desktop helpers. `project_preferences.php` covers Git origin and color handling. |
 | Project creation | `project_job.php` orchestrates Git clone, framework creation, and template installs. `template_lib.php` defines the CMS catalog and source adapters. `templates.php` manages custom entries. |
 | Developer tools | `developer.php` renders project diagnostics and plain-project launch and lint controls. `composer_job.php` and `composer-tools.js` implement Composer jobs. `job_runner.php` streams Git and Composer output. |
-| Editing | `editor.php` contains the Monaco UI. `file_api.php` implements list, read, save, create, rename, and delete. |
+| Editing | `editor.php`, `editor.js`, and `editor.css` provide the editor workspace and text fallback. `file_api.php` handles browsing, search, and file operations. |
 | Backups and restore | `backup.php` creates and downloads MXDP backups. `backups.php` catalogs and removes saved archives. `project_zip.php` exports portable ZIP bundles. `restore.php` validates and stages archive imports. `mxdp_lib.php` implements encryption, archive manifests, database tooling, and SQL discovery. |
 | Database setup | `database_setup.php` applies selected SQL imports and links successful results. `project_stats.php` returns cached file and database sizes for visible projects. |
 | Preferences and client code | `settings.php` edits dashboard preferences and starter stubs. `style.css` and `themes.css` style the interface. `todo.js` stores browser-local tasks. `archive-ui.js` handles password visibility and archive drop. |
@@ -25,7 +25,7 @@ These routes support the dashboard UI. Treat their request fields and formats as
 | Route | Request and result |
 | --- | --- |
 | `index.php` | GET applies `q`, `letter`, `starred`, and `page`. POST handles project changes with a session token and redirects after handling them. |
-| `file_api.php` | GET supports list and read. JSON POST supports save, delete, rename, create file, and create folder with the session token. |
+| `file_api.php` | GET supports list, browse, search, and read. JSON POST supports save, delete, rename, create file, and create folder with the session token. The editor uses file version hashes to detect changes made after it opened a file. |
 | `project_stats.php` | JSON POST accepts up to 12 project names and returns file and database display values keyed by project. |
 | `project_origin.php` | GET returns the repository's displayed origin on demand. It uses Git configuration and removes embedded HTTP(S) credentials from the displayed URL. |
 | `project_job.php`, `composer_job.php` | Form POST with the session token. Responses use newline-delimited JSON with stage, output, completion, or error events. Use the final event to determine success. |

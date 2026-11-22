@@ -28,17 +28,62 @@ function dashName(string $name): bool {
         && !preg_match('/\A(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i', $name)
         && !in_array(strtolower($name), ['dashboard', 'phpmyadmin', 'xampp', 'webalizer'], true);
 }
+function dashProjectsRoot(): string {
+    $configured = getenv('DASHBOARD_PROJECTS_ROOT');
+    $root = realpath($configured !== false && $configured !== '' ? $configured : dirname(__DIR__));
+    if ($root === false || !is_dir($root)) throw new RuntimeException('Projects folder not found. Check DASHBOARD_PROJECTS_ROOT.');
+    return $root;
+}
+
+function dashPathsMatch(string $left, string $right): bool {
+    return PHP_OS_FAMILY === 'Windows' ? strcasecmp($left, $right) === 0 : $left === $right;
+}
+
+function dashPhpCli(): string {
+    $configured = getenv('DASHBOARD_PHP_CLI');
+    if ($configured !== false && $configured !== '') return $configured;
+    if (PHP_SAPI === 'cli') return PHP_BINARY;
+    $binary = PHP_OS_FAMILY === 'Windows' ? 'php.exe' : 'php';
+    $xampp = dirname(__DIR__, 2);
+    foreach ([$xampp . '/php/' . $binary, $xampp . '/bin/' . $binary, PHP_BINDIR . '/' . $binary] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) return $candidate;
+    }
+    return $binary;
+}
+
+function dashMysqlExecutable(string $program): string {
+    $binary = $program . (PHP_OS_FAMILY === 'Windows' ? '.exe' : '');
+    $xampp = dirname(__DIR__, 2);
+    $alias = $program === 'mysqldump' ? 'mariadb-dump' : 'mariadb';
+    $names = [$binary, $alias . (PHP_OS_FAMILY === 'Windows' ? '.exe' : '')];
+    $directories = array_merge([$xampp . '/mysql/bin', $xampp . '/bin'], explode(PATH_SEPARATOR, (string)getenv('PATH')));
+    foreach ($directories as $directory) {
+        if ($directory === '') continue;
+        foreach ($names as $name) {
+            $candidate = trim($directory, '"') . DIRECTORY_SEPARATOR . $name;
+            if (is_file($candidate) && is_executable($candidate)) return $candidate;
+        }
+    }
+    return $binary;
+}
+
+function dashPhpMyAdminUrl(?string $database = null): string {
+    $url = getenv('DASHBOARD_PHPMYADMIN_URL') ?: '../phpmyadmin/';
+    if ($database === null) return $url;
+    return rtrim($url, '/') . '/index.php?' . http_build_query(['route' => '/database/structure', 'db' => $database]);
+}
+
 function dashProject(string $name, bool $existing = true): string {
-    $base = realpath('C:/xampp/htdocs');
-    if (!$base || !dashName($name)) throw new RuntimeException('Invalid project name');
+    $base = dashProjectsRoot();
+    if (!dashName($name)) throw new RuntimeException('Invalid project name');
     $candidate = $base . DIRECTORY_SEPARATOR . $name;
     if (!$existing) {
         if (file_exists($candidate) || is_link($candidate)) throw new RuntimeException('Project already exists');
         return $candidate;
     }
     $resolved = realpath($candidate);
-    if (!$resolved || strcasecmp($resolved, $candidate) !== 0 || is_link($candidate) || !is_dir($resolved)) {
-        throw new RuntimeException('Project is missing or outside htdocs');
+    if (!$resolved || !dashPathsMatch($resolved, $candidate) || is_link($candidate) || !is_dir($resolved)) {
+        throw new RuntimeException('Project is missing or outside the projects folder');
     }
     return $resolved;
 }
@@ -60,7 +105,7 @@ function dashFilePath(string $root, string $relative, bool $allowMissing = false
     foreach ($parts as $index => $part) {
         $path .= DIRECTORY_SEPARATOR . $part;
         $resolved = realpath($path);
-        if (is_link($path) || ($resolved !== false && strcasecmp($resolved, $path) !== 0)) {
+        if (is_link($path) || ($resolved !== false && !dashPathsMatch($resolved, $path))) {
             throw new RuntimeException('Linked paths are unavailable.');
         }
         if ($resolved === false && (!$allowMissing || $index !== count($parts) - 1)) {
@@ -68,6 +113,34 @@ function dashFilePath(string $root, string $relative, bool $allowMissing = false
         }
     }
     return $path;
+}
+
+function dashCreateProjectEntry(string $root, string $relative, bool $folder): void {
+    $parts = dashPathParts($relative);
+    $name = $folder ? null : array_pop($parts);
+    $created = [];
+    try {
+        $prefix = '';
+        foreach ($parts as $index => $part) {
+            $prefix .= ($prefix === '' ? '' : '/') . $part;
+            $target = dashFilePath($root, $prefix, true);
+            $last = $folder && $index === array_key_last($parts);
+            if (is_dir($target) && !$last) continue;
+            if (!@mkdir($target, 0755)) {
+                throw new RuntimeException('Could not create folder ' . $prefix . '. Check that the name is available.');
+            }
+            $created[] = $target;
+        }
+        if ($name !== null) {
+            $file = dashFilePath($root, implode('/', [...$parts, $name]), true);
+            $handle = @fopen($file, 'xb');
+            if ($handle === false) throw new RuntimeException('Could not create file. Check that the name is available.');
+            fclose($handle);
+        }
+    } catch (Throwable $e) {
+        foreach (array_reverse($created) as $directory) @rmdir($directory);
+        throw $e;
+    }
 }
 function dashWrite(string $path, string $contents): void {
     $tmp = tempnam(dirname($path), 'dash_');
@@ -174,6 +247,12 @@ const DASH_THEMES = [
     'ocean' => ['label' => 'Deep Ocean', 'mode' => 'dark'],
     'sunrise' => ['label' => 'Sunrise', 'mode' => 'light'],
     'lavender' => ['label' => 'Lavender', 'mode' => 'light'],
+    'blueprint' => ['label' => 'Blueprint', 'mode' => 'dark'],
+    'vista' => ['label' => 'Vista Glass', 'mode' => 'dark'],
+    'ios' => ['label' => 'iOS Frost', 'mode' => 'light'],
+    'cartoon' => ['label' => 'Cartoon', 'mode' => 'light'],
+    'terminal' => ['label' => 'Green Terminal', 'mode' => 'dark'],
+    'paper' => ['label' => 'Warm Paper', 'mode' => 'light'],
 ];
 
 function dashTheme(string $name): string {
@@ -322,12 +401,24 @@ function dashLaunch(string $program): void {
         $path = dashProject($_POST['project'] ?? '');
         session_write_close();
         if (!function_exists('exec')) throw new RuntimeException('Command execution is disabled in PHP.');
-        if ($program === 'code') {
-            @exec('where.exe code 2>NUL', $matches, $status);
-            if ($status !== 0) throw new RuntimeException('VS Code was not found in Apache’s PATH.');
+        if (PHP_OS_FAMILY === 'Windows') {
+            if ($program === 'code') {
+                @exec('where.exe code 2>NUL', $matches, $status);
+                if ($status !== 0) throw new RuntimeException('VS Code was not found in Apache’s PATH.');
+            }
+            $launcher = $program === 'explorer' ? 'explorer.exe ' : '/b code -- ';
+            @exec('start "" ' . $launcher . escapeshellarg($path) . ' >NUL 2>&1', $output, $status);
+        } else {
+            $mac = PHP_OS_FAMILY === 'Darwin';
+            $launcher = $program === 'code' ? 'code' : ($mac ? 'open' : 'xdg-open');
+            @exec('command -v ' . escapeshellarg($launcher), $matches, $available);
+            if ($available !== 0 && $mac && $program === 'code') {
+                $launcher = 'open -a ' . escapeshellarg('Visual Studio Code');
+            } elseif ($available !== 0) {
+                throw new RuntimeException($launcher . ' was not found on the web server’s PATH.');
+            }
+            @exec($launcher . ' ' . escapeshellarg($path) . ' </dev/null >/dev/null 2>&1 &', $output, $status);
         }
-        $launcher = $program === 'explorer' ? 'explorer.exe ' : '/b code -- ';
-        @exec('start "" ' . $launcher . escapeshellarg($path) . ' >NUL 2>&1', $output, $status);
         if ($status !== 0) throw new RuntimeException('Could not launch ' . $program);
         http_response_code(204);
     } catch (Throwable $e) {

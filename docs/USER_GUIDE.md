@@ -4,7 +4,7 @@
 
 ## Find and organize projects
 
-The dashboard lists supported direct subfolders of `C:\xampp\htdocs`. Use **Search** or **Ctrl+F** to find a project by folder name. The alphabet rail filters by the first character and **All** clears that letter filter. **Starred projects** shows the favorites you marked with the star on a project card. **List** and **Tiles** switch layouts without navigating and remember the selection in the browser.
+The dashboard lists supported direct subfolders of the projects directory, which defaults to the dashboard folder's parent. Use **Search** or **Ctrl+F** to find a project by folder name. The alphabet rail filters by the first character and **All** clears that letter filter. **Starred projects** shows the favorites you marked with the star on a project card. **List** and **Tiles** switch layouts without navigating and remember the selection in the browser.
 
 Open the gear icon on a card for **Project Settings**. You can rename the folder, add notes, link MySQL databases, configure Git, and set appearance. Enter a **Project group** name to group related cards together. Matching group names share the **Group color**. Enable **Use custom card color** to override a card's accent. Clearing the group name moves the project to **Ungrouped**.
 
@@ -69,7 +69,11 @@ Save the template and select it under **Install CMS or Custom Template**. Editin
 
 ### Editor and plain PHP or HTML tools
 
-**Editor** lists project files and opens them as Monaco tabs. Create a file or folder by entering a project-relative path, or open a file to edit, save, rename, or delete it. Create a parent folder before creating a file inside it. Unsaved changes remain in their tabs while you switch between files. The editor handles UTF-8 text files up to 2 MiB and prompts before you leave the page with unsaved edits.
+**Editor** opens a browser workspace with an expandable Explorer and closeable file tabs. Use **Go to file** or **Ctrl+P** to find a file by name or path. Quick search skips dependency folders such as `vendor` and `node_modules`. You can still browse them in Explorer.
+
+Create files and folders from Explorer, or open a file to rename, save, or delete it. Enter a project-relative path such as `pages/index.php` to create the file and any missing parent folders together. **Ctrl+S** saves the active tab, **Ctrl+Shift+S** saves all edited tabs, and **Ctrl+F** finds text in the active file. **Preview** opens the saved PHP or HTML page in a new tab.
+
+Unsaved changes stay in their tabs when you switch files. The editor warns before closing a modified tab or leaving the workspace. If a file changes on disk, saving reports a conflict and keeps your draft open so you can merge it. The editor accepts UTF-8 text up to 2 MiB and provides a plain-text fallback when Monaco cannot load.
 
 On **Developer**, plain projects can set a **Launch file**, such as `pages/home.php`. Clear it to use automatic index detection. The PHP syntax checker runs `php -l` on a selected project-relative PHP file. A passing check verifies syntax. Run the app separately to check runtime behavior.
 
@@ -94,11 +98,11 @@ For a folder without Git, select **Initialize Git for this project** in **Projec
 
 **Backups → Project Tools** exposes Git Fetch and fast-forward-only Pull. Use your Git client for branching, merges, conflicts, rebases, and interactive credentials. The Git hosting preference in Settings does not create accounts or configure remotes.
 
-**··· → Open in Explorer** and **Open in VS Code** launch desktop programs from Apache. VS Code needs its `code` command on Apache's PATH. Desktop launches may be unavailable when Apache runs in a background Windows service session.
+**··· → Open project folder** and **Open in VS Code** launch desktop programs on the machine running Apache. VS Code uses its `code` command when available, with a macOS app launcher fallback. Desktop launches may be unavailable when Apache runs as a background service.
 
 ## Preferences and utilities
 
-- **Settings** offers Light, Dark, Windows XP, Blood Red, Forest, Deep Ocean, Sunrise, and Lavender. Selecting a theme changes the demo immediately. **Save preferences** applies it across the dashboard.
+- **Settings** offers Light, Dark, Windows XP, Blood Red, Forest, Deep Ocean, Sunrise, Lavender, Blueprint, Vista Glass, iOS Frost, Cartoon, Green Terminal, and Warm Paper. Selecting a theme changes the demo immediately. **Save preferences** applies it across the dashboard.
 - **Starter file templates** customize the generated README, license, Git ignore, changelog, and security policy for future blank projects. The dashboard substitutes `{{PROJECT_NAME}}` and `{{YEAR}}`.
 - The header's **to-do icon** opens a list where you can add, complete, and delete tasks without reloading. The tasks live in the current browser's storage for the current site address.
 - **phpMyAdmin** opens the local database UI. A card's **··· → Open in phpMyAdmin** section links directly to the project's connected databases when it has any.
