@@ -1,0 +1,18 @@
+<!-- Generated from UPGRADE.md by docs/build.ps1. -->
+<h1 id="upgrade-modern-xampp-dashboard">Upgrade Modern XAMPP Dashboard</h1>
+<p><a href="docs.php?page=overview">Documentation home</a></p>
+<h2 id="before-upgrading">Before upgrading</h2>
+<ol>
+<li>Back up <code>C:\xampp\htdocs\dashboard</code> and any project folders and databases you need to recover. Store the copy outside <code>htdocs</code>.</li>
+<li>Keep a copy of <code>storage/data/settings.json</code>, <code>storage/data/projects.json</code>, saved <code>.mxdp</code> files and matching <code>.mxdp.json</code> catalog files, custom stubs under <code>storage/broilers</code>, and any custom branding or local helpers.</li>
+<li>Keep backup passwords in a separate password store. Browser-local to-dos and view preferences stay in the browser profile for the current dashboard address.</li>
+</ol>
+<h2 id="update-and-verify">Update and verify</h2>
+<ol>
+<li>Update the dashboard files in <code>C:\xampp\htdocs\dashboard</code>. When copying an archive over an existing installation, preserve the local data listed above and keep the updated Apache access rules.</li>
+<li>Check that Apache can write to <code>storage/data</code>, <code>storage/broilers</code>, and project folders you want to manage. Review the <a href="docs.php?page=setup">setup requirements</a> if you are enabling Git, Composer, database, or CMS tools.</li>
+<li>Open the dashboard and verify that the project list, Settings, and Backups catalog load. Use a disposable project to verify the features you use.</li>
+<li>If you roll back dashboard files, restore the matching saved metadata and templates if needed. Rolling back the dashboard application does not reverse changes to project folders or databases.</li>
+</ol>
+<p>Older MXDPs without catalog metadata may show <strong>Unknown</strong> for database inclusion. Preserve legacy snapshots separately. The current importer accepts MXDP and ZIP files and the Backups table catalogs saved MXDP files.</p>
+<p><a href="docs.php?page=backups">Archive recovery and database import</a></p>

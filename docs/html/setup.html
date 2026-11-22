@@ -1,0 +1,163 @@
+<!-- Generated from docs/SETUP_AND_TROUBLESHOOTING.md by docs/build.ps1. -->
+<h1 id="setup-and-troubleshooting">Setup and troubleshooting</h1>
+<p><a href="docs.php?page=overview">Documentation home</a></p>
+<h2 id="install-on-a-local-apache-server">Install on a local Apache server</h2>
+<ol>
+<li>Put the dashboard in a folder named <code>dashboard</code> inside your Apache document root. For example, on a standard Windows XAMPP installation use <code>C:\xampp\htdocs\dashboard</code>. On macOS or Linux, use the document root from your Apache or XAMPP configuration. The dashboard discovers projects in its parent directory by default.</li>
+<li>Keep the root <code>.htaccess</code> and the access rules under <code>storage/data</code> and <code>storage/broilers</code>. Apache must honor the files and allow local requests.</li>
+<li>Start Apache and open <a href="http://localhost/dashboard/">localhost/dashboard</a>. Start the XAMPP MySQL or MariaDB service if you need database features.</li>
+<li>Give the Apache account write access to <code>storage/data</code> and <code>storage/broilers</code>. Creating, editing, and removing projects also require write access to the relevant project directories or <code>htdocs</code>.</li>
+</ol>
+<p>The dashboard assumes a trusted local user and can write project files, run tools, and operate on databases. Keep it bound to the local machine and preserve the Apache protections on its data directories. Bootstrap and Monaco load from a CDN, so browser access to the CDN is needed for the styled interface and Monaco editor.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Feature</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PHP 8.2 or newer</td>
+<td>Dashboard and editor</td>
+</tr>
+<tr>
+<td>PHP ZIP and OpenSSL</td>
+<td>MXDP backup and restore</td>
+</tr>
+<tr>
+<td>PHP ZIP</td>
+<td>ZIP import/export and CMS release extraction</td>
+</tr>
+<tr>
+<td>PHP cURL</td>
+<td>Downloading official CMS release archives</td>
+</tr>
+<tr>
+<td>PDO MySQL and XAMPP MySQL client binaries</td>
+<td>Database estimates, dumps, SQL imports, and database deletion</td>
+</tr>
+<tr>
+<td>Git on Apache's PATH</td>
+<td>Git initialization, cloning, origin changes, fetch/pull, and Git templates</td>
+</tr>
+<tr>
+<td>Composer on Apache's PATH</td>
+<td>Composer projects, framework/CMS installs, and dependency commands</td>
+</tr>
+<tr>
+<td>VS Code on Apache's PATH</td>
+<td>Open in VS Code</td>
+</tr>
+</tbody>
+</table>
+<p>Use <strong>PHP Info</strong> to check the loaded Apache <code>php.ini</code>, extensions, and active limits. The bundled PHP CLI can use a different configuration from Apache. Run the following in PowerShell to inspect the CLI and tool availability.</p>
+<pre><code class="language-powershell">&amp; C:\xampp\php\php.exe --ini
+&amp; C:\xampp\php\php.exe -m
+git --version
+composer --version
+</code></pre>
+<p>On macOS or Linux, use <code>php --ini</code> and <code>php -m</code> from the PHP installation you intend to run. If you change the server account's PATH, restart Apache so it can pick up the change. Terminal availability alone does not confirm that Apache can launch the same command.</p>
+<h3 id="optional-server-environment-settings">Optional server environment settings</h3>
+<p>Set these as environment variables visible to the dashboard's PHP process when the default installation layout does not match your setup.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DASHBOARD_PROJECTS_ROOT</code></td>
+<td>Absolute project directory on disk. Apache must also serve those project folders as URL siblings of the dashboard for <strong>Open</strong> and <strong>Preview</strong> to work. The environment variable does not create an Apache alias.</td>
+</tr>
+<tr>
+<td><code>DASHBOARD_PHP_CLI</code></td>
+<td>Absolute path to the PHP CLI executable for syntax checks and the Windows Composer PHAR launcher</td>
+</tr>
+<tr>
+<td><code>DASHBOARD_PHPMYADMIN_URL</code></td>
+<td>Base URL of your phpMyAdmin installation, such as <code>/phpmyadmin/</code>, without a query string</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Open project folder</strong> uses Explorer on Windows, <code>open</code> on macOS, and <code>xdg-open</code> on Linux. These launch on the machine running Apache. They require a desktop session available to its account. Browser editing and project tools remain available on a local development server without a desktop session.</p>
+<h2 id="configure-database-access">Configure database access</h2>
+<p>The dashboard reads these optional fields from <code>storage/data/settings.json</code>. Merge the keys into your existing JSON document to preserve themes, defaults, and custom templates.</p>
+<pre><code class="language-json">{
+  &quot;db_host&quot;: &quot;127.0.0.1&quot;,
+  &quot;db_port&quot;: 3306,
+  &quot;db_user&quot;: &quot;root&quot;,
+  &quot;db_password&quot;: &quot;&quot;
+}
+</code></pre>
+<p>These are the fallback values used for a default local XAMPP setup. Use your actual local credentials. Keep the settings file private. The dashboard uses the configured account for schema inspection, SQL dumps, and administrative actions. SQL import requires permission to create a schema and create, grant privileges to, and remove a temporary import account. The delete-database option also requires permission to drop linked schemas.</p>
+<h2 id="diagnose-common-problems">Diagnose common problems</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>What to check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dashboard is unavailable</td>
+<td>Check Apache, the URL and port, and the error log configured by Apache's <code>ErrorLog</code> directive. On Windows XAMPP the default is <code>C:\xampp\apache\logs\error.log</code>.</td>
+</tr>
+<tr>
+<td>Page appears unstyled or editor does not start</td>
+<td>Check whether the browser can load the Bootstrap and Monaco CDN resources. Reload after connectivity returns.</td>
+</tr>
+<tr>
+<td>Apache displays a folder listing instead of the app</td>
+<td>Open the app from the project card. Check <strong>Developer → Web entry point</strong>. A framework typically serves <code>public/</code>, <code>web/</code>, or <code>webroot/</code>. If Apache ignores the generated redirect, check <code>.htaccess</code> handling and <code>mod_rewrite</code>.</td>
+</tr>
+<tr>
+<td><strong>Open</strong> is missing</td>
+<td>Review the detected entry point in <strong>Developer</strong>. For a plain project, set a PHP or HTML <strong>Launch file</strong>. For a template, make sure installation finished and the public folder contains an index file.</td>
+</tr>
+<tr>
+<td>Git origin is blank</td>
+<td>Check whether the repository has a remote named <code>origin</code>. In that project's PowerShell prompt, run <code>git remote -v</code> and compare it with Project Settings.</td>
+</tr>
+<tr>
+<td>Git or Composer is unavailable in the dashboard</td>
+<td>Confirm Apache can find the executable and PHP can launch processes. Use <strong>Backups → Project Tools</strong> for the dashboard's environment indicators.</td>
+</tr>
+<tr>
+<td>Clone or push reports an authentication error</td>
+<td>Configure Git authentication for the Windows account running Apache. Use an HTTPS URL without credentials in the URL. Test interactive authentication in your Git client with that account.</td>
+</tr>
+<tr>
+<td>Composer or CMS installation fails</td>
+<td>Read the live job output for the first dependency, PHP version, extension, network, or credential error. Use <strong>Developer → Check platform</strong> when a lockfile exists. Inspect a partially created folder before retrying.</td>
+</tr>
+<tr>
+<td>MySQL size shows <strong>Unavailable</strong></td>
+<td>Confirm the database service is running, the link names are correct, and the configured account can read schema metadata. Results may be cached for five minutes.</td>
+</tr>
+<tr>
+<td>SQL import fails or reports a privilege-table error</td>
+<td>Read the import error and confirm the configured account can create a database and manage the temporary import account. A server error referring to a MySQL system table needs database administration outside the dashboard.</td>
+</tr>
+<tr>
+<td>Upload fails before the archive opens</td>
+<td>Check <code>upload_max_filesize</code> and <code>post_max_size</code> in the Apache PHP configuration. The POST limit needs room for the archive plus form fields. Restart Apache after changing it. The dashboard also enforces its own archive limits.</td>
+</tr>
+<tr>
+<td>MXDP password rejected</td>
+<td>Enter the exact password used when making the archive. A wrong password or damaged file can give the same error.</td>
+</tr>
+<tr>
+<td>Settings do not save</td>
+<td>Check write permissions on <code>storage/data</code>, the dashboard session, and Apache's error log. Reload if the form reports an expired session.</td>
+</tr>
+<tr>
+<td>Explorer or VS Code does not open</td>
+<td>Check Apache's PATH and whether its Windows session can show desktop windows. As a fallback, copy the project path from <strong>Developer</strong>.</td>
+</tr>
+</tbody>
+</table>
+<p><a href="docs.php?page=backups">Backups and databases</a> · <a href="docs.php?page=upgrade">Upgrade guide</a></p>

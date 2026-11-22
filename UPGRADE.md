@@ -1,16 +1,20 @@
-# XAMPP Dashboard upgrade
+# Upgrade Modern XAMPP Dashboard
 
-1. Back up your current dashboard directory and projects.
-2. Extract this archive into `C:\xampp\htdocs\dashboard`, preserving your existing `storage/logo.png` and any custom helper files.
-3. Ensure Apache can write to `storage/data` and `storage/broilers`.
-4. Open `http://localhost/dashboard/`, then click **Settings** to edit project stubs and preferences.
-5. Use **New Project** for optional README, .gitignore, LICENSE, CHANGELOG, and SECURITY files. Use **Tools** for clone, Composer framework creation, Git fetch/pull, snapshots, project metadata and ZIP/MXD restore.
-6. Enable PHP `zip` extension for archives. Install Git for Windows and Composer to use Git/Composer features. The Git/Composer commands run under Apache's account, so configure credentials for that account.
+[Documentation home](README.md)
 
-Data is stored in `storage/data/settings.json` and `storage/data/projects.json`. Local snapshots are under `storage/data/snapshots`. No MySQL database is used by dashboard metadata; the database-name field is informational only.
+## Before upgrading
 
-**Security:** Intended for trusted, local XAMPP use only. Do not expose this dashboard to the public Internet. `storage/data` and `storage/broilers` contain `.htaccess` rules denying HTTP access on Apache installations honoring `.htaccess`.
+1. Back up `C:\xampp\htdocs\dashboard` and any project folders and databases you need to recover. Store the copy outside `htdocs`.
+2. Keep a copy of `storage/data/settings.json`, `storage/data/projects.json`, saved `.mxdp` files and matching `.mxdp.json` catalog files, custom stubs under `storage/broilers`, and any custom branding or local helpers.
+3. Keep backup passwords in a separate password store. Browser-local to-dos and view preferences stay in the browser profile for the current dashboard address.
 
-**MXD:** `.mxd` backups are ZIP-compatible archives with a different filename extension. They are not encrypted or a proprietary binary format.
+## Update and verify
 
-**Limitations:** Framework creation and remote Git operations depend on local tools and credentials; they have not been end-to-end tested on Windows. Git pull uses fast-forward only. Snapshots exclude Git metadata. Restore always creates a **new** project directory; it never overwrites an existing project. Automatic snapshot rollback is not provided.
+1. Update the dashboard files in `C:\xampp\htdocs\dashboard`. When copying an archive over an existing installation, preserve the local data listed above and keep the updated Apache access rules.
+2. Check that Apache can write to `storage/data`, `storage/broilers`, and project folders you want to manage. Review the [setup requirements](docs/SETUP_AND_TROUBLESHOOTING.md) if you are enabling Git, Composer, database, or CMS tools.
+3. Open the dashboard and verify that the project list, Settings, and Backups catalog load. Use a disposable project to verify the features you use.
+4. If you roll back dashboard files, restore the matching saved metadata and templates if needed. Rolling back the dashboard application does not reverse changes to project folders or databases.
+
+Older MXDPs without catalog metadata may show **Unknown** for database inclusion. Preserve legacy snapshots separately. The current importer accepts MXDP and ZIP files and the Backups table catalogs saved MXDP files.
+
+[Archive recovery and database import](docs/BACKUPS_AND_DATABASES.md)

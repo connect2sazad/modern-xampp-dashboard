@@ -5,13 +5,16 @@ if (file_exists('./.installer')) {
     exit(0);
 }
 
-session_start();
-require_once __DIR__ . '/dashboard_lib.php';
+require_once __DIR__ . '/mxdp_lib.php';
+require_once __DIR__ . '/template_lib.php';
+require_once __DIR__ . '/project_preferences.php';
 $dashboardSettings = dashJson('settings');
-$htdocsDir = realpath('C:/xampp/htdocs');
-if ($htdocsDir === false || !is_dir($htdocsDir)) {
+$installTemplates = dashTemplates();
+try {
+    $htdocsDir = dashProjectsRoot();
+} catch (RuntimeException $e) {
     http_response_code(500);
-    exit('XAMPP htdocs directory not found. Check C:/xampp/htdocs.');
+    exit($e->getMessage());
 }
 if (empty($_SESSION['dashboard_csrf'])) {
     $_SESSION['dashboard_csrf'] = bin2hex(random_bytes(32));
@@ -28,14 +31,21 @@ function removeProjectTree(string $directory, array &$failures): bool
         return false;
     }
     try {
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
+        $tree = new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS);
+        $safeTree = new RecursiveCallbackFilterIterator($tree, static function ($entry) use ($directory, &$failures) {
+            $file = $entry->getPathname();
+            $resolved = realpath($file);
+            if ($entry->isLink() || $resolved === false || strcasecmp($resolved, $file) !== 0) {
+                $failures[] = 'Linked or inaccessible entry: ' . substr($file, strlen($directory) + 1);
+                return false;
+            }
+            return true;
+        });
+        $iterator = new RecursiveIteratorIterator($safeTree, RecursiveIteratorIterator::CHILD_FIRST);
         foreach ($iterator as $entry) {
             $file = $entry->getPathname();
             // Do not follow links, including links nested within the project.
-            if ($entry->isLink()) {
+            if ($entry->isLink() || realpath($file) === false || strcasecmp(realpath($file), $file) !== 0) {
                 $failures[] = 'Linked entry: ' . substr($file, strlen($directory) + 1);
                 continue;
             }
@@ -69,48 +79,128 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='save_projec
  try {
   dashCsrf(); $old=(string)($_POST['original_project']??'');$new=trim((string)($_POST['new_project_name']??''));
   $source=dashProject($old,true); if(!dashName($new))throw new RuntimeException('Invalid new project name');
-  $remote=trim((string)($_POST['project_remote']??''));if($remote!=='' && !dashRemote($remote))throw new RuntimeException('Remote must be a valid HTTPS URL without credentials');
+  $changeOrigin = ($_POST['change_origin'] ?? '') === '1';
+  $remote = trim((string)($_POST['project_remote'] ?? ''));
+  if ($changeOrigin && $remote !== '' && !dashRemote($remote)) {
+      throw new RuntimeException('Enter an HTTPS Git origin without credentials.');
+  }
+  $group = trim((string)($_POST['project_group'] ?? ''));
+  if (strlen($group) > 60 || preg_match('/[\x00-\x1f]/', $group)) throw new RuntimeException('Use a group name up to 60 characters.');
+  $groupColor = dashProjectColor($_POST['group_color'] ?? '', '#4566b0');
+  $cardColor = isset($_POST['use_card_color']) ? dashProjectColor($_POST['card_color'] ?? '') : '';
   $dbs=trim((string)($_POST['project_databases']??''));$names=array_values(array_filter(array_map('trim',explode(',',$dbs))));
   if(count($names)>20)throw new RuntimeException('Maximum 20 database names');
   foreach($names as $db)if(!preg_match('/^[A-Za-z0-9_$-]{1,64}$/',$db))throw new RuntimeException('Invalid database name: '.$db);
   $notes=substr(trim((string)($_POST['project_notes']??'')),0,3000);
   $isGit=is_dir($source.DIRECTORY_SEPARATOR.'.git') || is_file($source.DIRECTORY_SEPARATOR.'.git');
-  if($remote!=='' && !$isGit)throw new RuntimeException('Initialize Git before configuring an origin remote');
-  if($isGit && function_exists('exec')) {
-   $prefix='git -C '.escapeshellarg($source).' ';
-   $out=[];$code=1;@exec($prefix.'remote get-url origin 2>&1',$out,$code);
-   if($remote==='') {if($code===0)dashExec($prefix.'remote remove origin');}
-   elseif($code===0)dashExec($prefix.'remote set-url origin '.escapeshellarg($remote));
-   else dashExec($prefix.'remote add origin '.escapeshellarg($remote));
-  } elseif($isGit)throw new RuntimeException('Git executable is required to update the remote');
-  if($new!==$old){$destination=dashProject($new,false);if(!@rename($source,$destination))throw new RuntimeException('Could not rename project folder. Close programs using it.');}
-  $meta=dashJson('projects');$oldInfo=$meta[$old]??[];unset($meta[$old]);$meta[$new]=array_merge($oldInfo,['remote'=>$remote,'databases'=>implode(', ',$names),'notes'=>$notes,'updated_at'=>date(DATE_ATOM)]);dashSave('projects',$meta);
+  $destination = $new !== $old ? dashProject($new, false) : $source;
+  $prefix = 'git -C ' . escapeshellarg($source) . ' ';
+  if (!$isGit && isset($_POST['initialize_git'])) {
+      dashInitializeProjectGit($source, $dashboardSettings['default_branch'] ?? 'main');
+      $isGit = true;
+  }
+  if ($changeOrigin && !$isGit) throw new RuntimeException('Enable Git initialization before adding an origin.');
+  if ($changeOrigin && $isGit) {
+      $currentOrigin = dashGitOrigin($source);
+      if ($remote === '' && $currentOrigin !== '') dashExec($prefix . 'remote remove origin');
+      if ($remote !== '' && $remote !== $currentOrigin) {
+          dashExec($prefix . 'remote ' . ($currentOrigin === '' ? 'add' : 'set-url') . ' origin ' . escapeshellarg($remote));
+      }
+  }
+  if ($new !== $old && !@rename($source, $destination)) {
+      throw new RuntimeException('Could not rename project folder. Close programs using it.');
+  }
+  $meta = dashJson('projects');
+  $oldInfo = $meta[$old] ?? [];
+  unset($meta[$old]);
+  if ($group !== '') {
+      foreach ($meta as &$other) {
+          if (strcasecmp($other['group'] ?? '', $group) === 0) {
+              $other['group'] = $group;
+              $other['group_color'] = $groupColor;
+          }
+      }
+      unset($other);
+  }
+  $meta[$new] = array_merge($oldInfo, [
+      'databases' => implode(', ', $names), 'notes' => $notes,
+      'group' => $group, 'group_color' => $groupColor, 'card_color' => $cardColor,
+      'updated_at' => date(DATE_ATOM),
+  ]);
+  if ($changeOrigin) $meta[$new]['remote'] = $remote;
+  dashSave('projects', $meta);
   dashNotice('Project settings saved: '.$new);
  }catch(Throwable $e){dashNotice($e->getMessage(),true);}dashRedirect();
 }
-// Remove is a separate, CSRF-protected POST operation.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'remove_project') {
-    $name = (string)($_POST['remove_project'] ?? '');
-    $csrfValid = hash_equals($_SESSION['dashboard_csrf'], (string)($_POST['csrf'] ?? ''));
-    $confirmed = hash_equals($name, (string)($_POST['confirm_project'] ?? ''));
-    $validName = preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}\z/D', $name)
-        && !in_array(strtolower($name), ['.', '..', 'dashboard', 'phpmyadmin', 'xampp', 'webalizer'], true)
-        && $name[0] !== '.';
-    $target = $validName ? realpath($htdocsDir . DIRECTORY_SEPARATOR . $name) : false;
-    $parent = $target !== false ? realpath(dirname($target)) : false;
-    $failedEntries = [];
-    if (!$csrfValid || !$confirmed || !$validName || $target === false || $parent !== $htdocsDir || !is_dir($target)
-        || is_link($htdocsDir . DIRECTORY_SEPARATOR . $name) || is_link($target)) {
-        $_SESSION['dashboard_flash_error'] = 'Removal denied: invalid project or session.';
-    } elseif (!removeProjectTree($target, $failedEntries)) {
-        $_SESSION['dashboard_flash_error'] = 'Project removal incomplete. Could not remove: ' . implode(', ', array_map('basename', $failedEntries)) . '. Close applications using these files, check permissions, then retry.';
-    } else {
-        $data = dashJson('projects'); unset($data[$name]); dashSave('projects', $data);
-        $_SESSION['dashboard_flash_success'] = 'Project removed: ' . $name;
+    $removed = false;
+    $dropped = [];
+    try {
+        dashCsrf();
+        $name = $_POST['remove_project'] ?? '';
+        if ($name !== ($_POST['confirm_project'] ?? null)) throw new RuntimeException('Type the project name to confirm removal.');
+        $target = dashProject($name);
+        $name = basename($target);
+        $projectData = dashJson('projects');
+        $databases = dashDbNames($projectData[$name] ?? []);
+        $deleteDatabases = isset($_POST['delete_databases']);
+        $fullBackup = isset($_POST['backup_full']);
+        $databaseBackup = isset($_POST['backup_database']);
+        if ($fullBackup && $databaseBackup) throw new RuntimeException('Choose one backup type.');
+        if (($deleteDatabases || $databaseBackup) && !$databases) throw new RuntimeException('This project has no linked databases.');
+        if ($deleteDatabases) {
+            $pdo = dashDatabase(dashDatabaseConfig());
+            foreach ($databases as $database) {
+                dashDatabaseName($database);
+                foreach ($projectData as $other => $info) {
+                    if (strcasecmp($other, $name) !== 0 && in_array(strtolower($database), array_map('strtolower', dashDbNames($info)), true)) {
+                        throw new RuntimeException('Database ' . $database . ' is also linked to ' . $other . '.');
+                    }
+                }
+            }
+        }
+        if ($fullBackup || $databaseBackup) {
+            $password = dashConfirmedPassword($_POST['backup_password'] ?? null, $_POST['backup_password_confirm'] ?? null);
+            $backup = dashCreateMxdp($name, $fullBackup ? $target : null, $databases, $password);
+            $_SESSION['dashboard_backups'][$backup['id']] = $backup;
+        }
+        $failures = [];
+        if (!removeProjectTree($target, $failures)) {
+            throw new RuntimeException('Project removal incomplete. Could not remove: ' . implode(', ', array_map('basename', $failures)));
+        }
+        $removed = true;
+        if ($deleteDatabases) {
+            foreach ($databases as $database) {
+                $pdo->exec('DROP DATABASE IF EXISTS `' . $database . '`');
+                $dropped[] = $database;
+            }
+        }
+        $projectData = dashJson('projects');
+        unset($projectData[$name]);
+        dashSave('projects', $projectData);
+        dashNotice('Project removed: ' . $name . ($dropped ? '. Database removal completed for: ' . implode(', ', $dropped) . '.' : '.'));
+    } catch (Throwable $e) {
+        $message = $removed ? 'Project files were removed. ' : '';
+        if ($dropped) $message .= 'Database removal completed for: ' . implode(', ', $dropped) . '. ';
+        dashNotice($message . $e->getMessage(), true);
     }
-    header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'), true, 303);
-    exit;
+    dashRedirect();
 }
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_project_star') {
+    try {
+        dashCsrf();
+        $project = basename(dashProject($_POST['project'] ?? ''));
+        $star = $_POST['starred'] ?? '';
+        if (!in_array($star, ['0', '1'], true)) throw new RuntimeException('Invalid starred status.');
+        dashMeta($project, ['starred' => $star === '1']);
+    } catch (Throwable $e) {
+        dashNotice($e->getMessage(), true);
+    }
+    dashRedirect(dashPageUrl((int)($_GET['page'] ?? 1), (string)($_GET['q'] ?? ''),
+        (string)($_GET['letter'] ?? ''), ($_GET['starred'] ?? '') === '1'));
+}
+
 $error = '';
 $oldName = '';
 $oldCode = "<?php\n\n// Welcome to your new PHP project!\n\necho \"Hello World!\";\n";
@@ -121,7 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['action'] ?? ''),
         $error = 'Session expired. Refresh and try again.';
     } elseif (!preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\z/D', $oldName)) {
         $error = 'Use 1–80 letters, numbers, underscores or hyphens. Start with a letter or number.';
-    } elseif (in_array(strtolower($oldName), ['dashboard', 'phpmyadmin'], true)) {
+    } elseif (!dashName($oldName)) {
         $error = 'This folder name is reserved.';
     } elseif (!empty($_POST['git_init']) && !in_array(($_POST['DefaultBranch'] ?? ''), ['main', 'master'], true)) {
         $error = 'Invalid Git default branch.';
@@ -211,29 +301,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['action'] ?? ''),
         }
     }
 }
-$projects = array_filter(glob($htdocsDir . DIRECTORY_SEPARATOR . '*') ?: [], 'is_dir');
-$projects = array_values(array_filter($projects, function ($p) {
-    return !in_array(strtolower(basename($p)), ['dashboard', '.', '..'], true);
+// Fast index: enumerate folder names only; defer disk and database scans to AJAX.
+$allProjects = array_values(array_filter(glob($htdocsDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) ?: [], static function ($path) {
+    try {
+        dashProject(basename($path));
+        return true;
+    } catch (RuntimeException $e) {
+        return false;
+    }
 }));
-natcasesort($projects);
-$projectMeta=dashJson('projects');
-$dbRequested=[];foreach($projects as $projectPath){foreach(dashDbNames($projectMeta[basename($projectPath)]??[]) as $db)$dbRequested[]=$db;}
-$dbSizes=dashDbSizes(array_unique($dbRequested));
+$projectMeta = dashJson('projects');
+$projectGroups = [];
+foreach ($allProjects as $path) {
+    $group = $projectMeta[basename($path)]['group'] ?? '';
+    if ($group !== '') $projectGroups[$group] = dashProjectColor($projectMeta[basename($path)]['group_color'] ?? '', '#4566b0');
+}
+uksort($projectGroups, 'strnatcasecmp');
+usort($allProjects, static function ($a, $b) use ($projectMeta) {
+    $groupA = $projectMeta[basename($a)]['group'] ?? '';
+    $groupB = $projectMeta[basename($b)]['group'] ?? '';
+    return ($groupA === '') <=> ($groupB === '') ?: strnatcasecmp($groupA, $groupB) ?: strnatcasecmp(basename($a), basename($b));
+});
+$searchTerm = trim((string)($_GET['q'] ?? ''));
+$searchTerm = substr($searchTerm, 0, 100);
+$letter = strtoupper(trim((string)($_GET['letter'] ?? '')));
+if (!preg_match('/^(?:[A-Z]|#)$/', $letter)) $letter = '';
+$starredOnly = ($_GET['starred'] ?? '') === '1';
+$lettersAvailable = [];
+foreach ($allProjects as $path) {
+    if ($starredOnly && empty($projectMeta[basename($path)]['starred'])) continue;
+    $first = strtoupper(substr(basename($path), 0, 1));
+    $lettersAvailable[preg_match('/^[A-Z]$/', $first) ? $first : '#'] = true;
+}
+$projects = array_values(array_filter($allProjects, static function ($path) use ($searchTerm, $letter, $starredOnly, $projectMeta) {
+    $name = basename($path);
+    if ($starredOnly && empty($projectMeta[$name]['starred'])) return false;
+    if ($searchTerm !== '' && stripos($name, $searchTerm) === false) return false;
+    if ($letter !== '') {
+        $first = strtoupper(substr($name, 0, 1));
+        $bucket = preg_match('/^[A-Z]$/', $first) ? $first : '#';
+        if ($bucket !== $letter) return false;
+    }
+    return true;
+}));
+$perPage = 12;
+$totalProjects = count($projects);
+$pageCount = max(1, (int)ceil($totalProjects / $perPage));
+$page = max(1, min($pageCount, (int)($_GET['page'] ?? 1)));
+$projects = array_slice($projects, ($page - 1) * $perPage, $perPage);
+function dashPageUrl(int $page, string $search, string $letter, bool $starred = false): string {
+    return 'index.php?' . http_build_query(array_filter([
+        'page' => $page, 'q' => $search, 'letter' => $letter,
+        'starred' => $starred ? '1' : '',
+    ], static fn($v) => $v !== ''));
+}
 ?>
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="<?= h($dashboardSettings['theme'] ?? 'light') ?>">
+<html lang="en" <?= dashThemeAttributes($dashboardSettings) ?>>
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>XAMPP Project Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="themes.css">
     <link rel="stylesheet" href="style.css">
     <link rel="shortcut icon" href="./storage/logo.png" type="image/png">
 </head>
 
 <body>
-    <div class="container py-4">
+    <nav class="alphabet-nav" aria-label="Project alphabetical navigation">
+      <a href="<?= h(dashPageUrl(1, $searchTerm, '', $starredOnly)) ?>" title="All letters" class="<?= $letter === '' ? 'active' : '' ?>">All</a>
+      <?php foreach (array_merge(['#'], range('A','Z')) as $ch): ?>
+        <a href="<?= h(dashPageUrl(1, $searchTerm, $ch, $starredOnly)) ?>" class="<?= $letter === $ch ? 'active' : '' ?> <?= !isset($lettersAvailable[$ch]) ? 'empty-letter' : '' ?>" title="Projects starting with <?= h($ch) ?>"><?= h($ch) ?></a>
+      <?php endforeach; ?>
+    </nav>
+    <div class="container py-4 dashboard-main">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
             <a href="https://connect2sazad.github.io/" target="_blank"><img src="./storage/logo.png" alt="Logo" class="logo"></a>
             <div class="d-flex flex-wrap gap-2">
@@ -244,12 +386,21 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                         <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#blankProjectGit">Blank Git Project</button></li>
                         <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#cloneGitModal">Clone a Git Project</button></li>
                         <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#frameworkModal">Blank Framework Project</button></li>
-                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal">Import a .zip file</button></li>
+                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#cmsTemplateModal">Install CMS or Custom Template</button></li>
+                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#restoreMxdpModal" data-archive-kind="mxdp">Restore an MXDP backup</button></li>
+                        <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#restoreMxdpModal" data-archive-kind="zip">Import a ZIP project</button></li>
                     </ul>
                 </div>
-                <a href="http://localhost/phpmyadmin/" class="btn btn-outline-primary" target="_blank" rel="noopener">🛢️ phpMyAdmin</a>
+                <a href="<?= h(dashPhpMyAdminUrl()) ?>" class="btn btn-outline-primary" target="_blank" rel="noopener">🛢️ phpMyAdmin</a>
                 <a href="./phpinfo.php" class="btn btn-outline-info" target="_blank" rel="noopener">📘 PHP Info</a>
-                <a href="tools.php" class="btn btn-outline-secondary">🧰 Tools</a>
+                <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#todoModal" title="To-do list" aria-label="Open to-do list">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="18" height="18" rx="3"></rect>
+                        <path d="m7.5 12 3 3 6-6"></path>
+                    </svg>
+                </button>
+                <a href="backups.php" class="btn btn-outline-secondary">💾 Backups</a>
+                <a href="docs.php" class="btn btn-outline-secondary">Docs</a>
                 <a href="settings.php" class="btn btn-outline-dark">⚙️ Settings</a>
 
             </div>
@@ -262,57 +413,128 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
             <div class="alert alert-success" role="status"><?= h($_SESSION['dashboard_flash_success']) ?></div>
             <?php unset($_SESSION['dashboard_flash_success']); ?>
         <?php endif; ?>
-        <?php foreach (['dashboard_flash_success'=>'success','dashboard_flash_error'=>'danger'] as $key=>$level): if (!empty($_SESSION[$key])): ?>
-        <div class="alert alert-<?= $level ?>" role="alert"><?= h($_SESSION[$key]) ?></div>
-        <?php unset($_SESSION[$key]); endif; endforeach; ?>
+
         <?php if ($error !== ''): ?>
             <div class="alert alert-danger" role="alert"><?= h($error) ?></div>
         <?php endif; ?>
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="mb-0">Your XAMPP Projects <span class="badge bg-secondary fs-6"><?= count($projects) ?></span></h4>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="showSearch">🔍 Search</button>
+            <h4 class="mb-0">Your XAMPP Projects <span class="badge bg-secondary fs-6"><?= $totalProjects ?></span></h4>
+            <div class="d-flex flex-wrap justify-content-end gap-2">
+                <a class="btn btn-sm <?= $starredOnly ? 'btn-warning' : 'btn-outline-secondary' ?>"
+                   href="<?= h(dashPageUrl(1, $searchTerm, '', !$starredOnly)) ?>"><?= $starredOnly ? 'Show all projects' : '★ Starred projects' ?></a>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Project layout">
+                    <button type="button" class="btn btn-outline-secondary project-view-toggle" data-view="list" aria-pressed="false">List</button>
+                    <button type="button" class="btn btn-outline-secondary project-view-toggle" data-view="tiles" aria-pressed="true">Tiles</button>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="showSearch">🔍 Search</button>
+            </div>
         </div>
-        <div id="searchBoxWrapper" class="mb-3" hidden>
-            <input type="search" id="projectSearch" class="form-control" placeholder="Search projects... (Ctrl + F)" autocomplete="off">
+        <div id="searchBoxWrapper" class="mb-3" <?= $searchTerm !== '' ? '' : 'hidden' ?>>
+            <input type="search" id="projectSearch" class="form-control" value="<?= h($searchTerm) ?>" placeholder="Search projects... (Ctrl + F)" autocomplete="off">
         </div>
-        <div class="row" id="projectList">
-            <?php foreach ($projects as $projectPath): $projectName = basename($projectPath); ?>
-                <div class="col-md-4 project-card" data-name="<?= h(strtolower($projectName)) ?>">
-                    <div class="card">
+        <div id="projectList" data-view="tiles">
+            <?php $previousGroup = null; foreach ($projects as $projectPath):
+                $projectName = basename($projectPath);
+                $info = $projectMeta[$projectName] ?? [];
+                $isGit = file_exists($projectPath . '/.git');
+                $names = dashDbNames($info);
+                [, $appUrl] = dashProjectLaunch($projectPath, $info);
+                $group = $info['group'] ?? '';
+                $groupColor = dashProjectColor($info['group_color'] ?? '', '#4566b0');
+                $cardColor = dashProjectColor($info['card_color'] ?? '');
+                $accent = $cardColor ?: ($group !== '' ? $groupColor : 'var(--bs-primary)');
+                $starred = !empty($info['starred']);
+                if ($projectGroups && $group !== $previousGroup):
+            ?>
+                <h5 class="project-group-heading" style="--group-color:<?= h($groupColor) ?>"><?= h($group !== '' ? $group : 'Ungrouped') ?></h5>
+            <?php endif; $previousGroup = $group; ?>
+                <article class="project-card" data-name="<?= h(strtolower($projectName)) ?>">
+                    <div class="card project-surface" style="--project-accent:<?= h($accent) ?>">
                         <div class="card-body">
-                            <?php
-                              $is_git=is_dir($projectPath.DIRECTORY_SEPARATOR.'.git') || is_file($projectPath.DIRECTORY_SEPARATOR.'.git');
-                              $info=$projectMeta[$projectName]??[];
-                              $bytes=dashFolderBytes($projectPath);$names=dashDbNames($info);$dbTotal=0;$allKnown=true;
-                              foreach($names as $db){if(!array_key_exists($db,$dbSizes)){$allKnown=false;break;}$dbTotal+=$dbSizes[$db];}
-                            ?>
-                            <h5><?= $is_git ? '<span title="Git repository" aria-label="Git repository">🔀</span> ' : '' ?><?= h($projectName) ?></h5>
-                            <p class="project-path"><code><?= h($projectPath) ?></code><br>
-                              <span title="Recursive sum of regular file sizes; excludes symlink targets">📁 Files: <?= $bytes===null?'Unavailable':h(dashBytes($bytes)) ?></span><br>
-                              <span title="MySQL data and index sizes, if accessible">🗄️ Database: <?= !$names?'Not linked':($allKnown?h(dashBytes($dbTotal)):'Unavailable') ?></span>
-                              <?php if($names): ?><br><small><?= h(implode(', ',$names)) ?></small><?php endif; ?>
-                            </p>
-                            <div class="d-flex flex-wrap gap-1">
-                                <a href="http://localhost/<?= rawurlencode($projectName) ?>/" class="btn btn-sm btn-primary" target="_blank" rel="noopener">🌐 Open</a>
-                                <button type="button" class="btn btn-sm btn-secondary launch-helper" data-helper="explorer.php" data-path="<?= h($projectPath) ?>">📂 Explorer</button>
-                                <button type="button" class="btn btn-sm btn-dark launch-helper" data-helper="vscode.php" data-path="<?= h($projectPath) ?>">💻 VS Code</button>
-                                <a href="editor.php?project=<?= rawurlencode($projectName) ?>" class="btn btn-sm btn-warning">📝 Edit Files</a>
-                                <a href="backup.php?folder=<?= rawurlencode($projectName) ?>" class="btn btn-sm btn-outline-success">⬇️ Backup</a>
-                                <button type="button" class="btn btn-sm btn-outline-danger remove-project-btn" data-project="<?= h($projectName) ?>" data-bs-toggle="modal" data-bs-target="#removeProjectModal">🗑️ Remove</button>
-                                <button type="button" class="btn btn-sm btn-outline-info project-settings-btn" data-bs-toggle="modal" data-bs-target="#projectSettingsModal" data-project="<?= h($projectName) ?>" data-remote="<?= h($info['remote']??'') ?>" data-databases="<?= h($info['databases']??$info['database']??'') ?>" data-notes="<?= h($info['notes']??'') ?>">⚙️ Settings</button>
+                            <div class="project-card-heading">
+                                <div class="project-icon" aria-hidden="true"><?= $isGit ? '⇆' : '▱' ?></div>
+                                <div class="project-title">
+                                    <h5 class="text-break mb-1"><?= h($projectName) ?></h5>
+                                    <?php if ($isGit): ?><span class="project-label">Git</span><?php endif; ?>
+                                    <?php if ($group !== ''): ?><span class="project-label"><?= h($group) ?></span><?php endif; ?>
+                                </div>
+                                <form method="post" action="<?= h(dashPageUrl($page, $searchTerm, $letter, $starredOnly)) ?>">
+                                    <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>">
+                                    <input type="hidden" name="action" value="set_project_star">
+                                    <input type="hidden" name="project" value="<?= h($projectName) ?>">
+                                    <input type="hidden" name="starred" value="<?= $starred ? '0' : '1' ?>">
+                                    <button class="btn btn-sm <?= $starred ? 'btn-warning' : 'btn-outline-secondary' ?>" type="submit"
+                                        aria-label="Star <?= h($projectName) ?>" aria-pressed="<?= $starred ? 'true' : 'false' ?>"
+                                        title="<?= $starred ? 'Remove star' : 'Star project' ?>"><?= $starred ? '★' : '☆' ?></button>
+                                </form>
+                            </div>
+                            <div class="project-details">
+                                <code class="project-path" title="<?= h($projectPath) ?>"><?= h($projectPath) ?></code>
+                                <div class="project-stats text-body-secondary">
+                                    <span class="project-file-size" data-project="<?= h($projectName) ?>">Files: Loading…</span>
+                                    <span class="project-db-size" data-project="<?= h($projectName) ?>">Database: <?= $names ? 'Loading…' : 'Not linked' ?></span>
+                                </div>
+                                <?php if ($names): ?><small class="text-body-secondary text-break"><?= h(implode(', ', $names)) ?></small><?php endif; ?>
+                            </div>
+                            <div class="project-actions">
+                                <?php if ($appUrl !== null): ?>
+                                    <a href="<?= h($appUrl) ?>" class="btn btn-sm btn-primary" target="_blank" rel="noopener">Open ↗</a>
+                                <?php endif; ?>
+                                <a href="editor.php?project=<?= rawurlencode($projectName) ?>" class="btn btn-sm btn-outline-secondary">Editor</a>
+                                <a href="developer.php?project=<?= rawurlencode($projectName) ?>" class="btn btn-sm btn-outline-secondary">Developer</a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary project-settings-btn"
+                                    data-bs-toggle="modal" data-bs-target="#projectSettingsModal" data-project="<?= h($projectName) ?>"
+                                    data-git="<?= $isGit ? '1' : '0' ?>" data-databases="<?= h(implode(', ', $names)) ?>"
+                                    data-notes="<?= h($info['notes'] ?? '') ?>" data-group="<?= h($group) ?>"
+                                    data-group-color="<?= h($groupColor) ?>" data-card-color="<?= h($cardColor) ?>"
+                                    title="Project settings" aria-label="Settings for <?= h($projectName) ?>">⚙</button>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary project-more" data-bs-toggle="dropdown"
+                                        aria-expanded="false" aria-label="More actions for <?= h($projectName) ?>">···</button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow">
+                                        <li><button type="button" class="dropdown-item launch-helper" data-helper="explorer.php" data-project="<?= h($projectName) ?>">Open project folder</button></li>
+                                        <li><button type="button" class="dropdown-item launch-helper" data-helper="vscode.php" data-project="<?= h($projectName) ?>">Open in VS Code</button></li>
+                                        <?php if ($names): ?>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><h6 class="dropdown-header">Open in phpMyAdmin</h6></li>
+                                            <?php foreach ($names as $database): ?>
+                                                <li><a class="dropdown-item" target="_blank" rel="noopener" href="<?= h(dashPhpMyAdminUrl($database)) ?>"><?= h($database) ?></a></li>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item" href="backup.php?folder=<?= rawurlencode($projectName) ?>">Create MXDP backup</a></li>
+                                        <li><form action="project_zip.php" method="post">
+                                            <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>">
+                                            <input type="hidden" name="project" value="<?= h($projectName) ?>">
+                                            <button class="dropdown-item">Download ZIP + DB</button>
+                                        </form></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><button type="button" class="dropdown-item text-danger remove-project-btn" data-project="<?= h($projectName) ?>" data-databases="<?= h(implode(', ', $names)) ?>" data-bs-toggle="modal" data-bs-target="#removeProjectModal">Remove project</button></li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </article>
             <?php endforeach; ?>
         </div>
+        <nav aria-label="Project pages" class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3 mb-4">
+          <small class="text-muted">Showing <?= $totalProjects ? (($page - 1) * $perPage + 1) : 0 ?>–<?= min($page * $perPage, $totalProjects) ?> of <?= $totalProjects ?> projects</small>
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>"><a class="page-link" href="<?= h(dashPageUrl(max(1, $page - 1), $searchTerm, $letter, $starredOnly)) ?>">Previous</a></li>
+            <?php for ($n = max(1, $page - 2); $n <= min($pageCount, $page + 2); $n++): ?>
+              <li class="page-item <?= $n === $page ? 'active' : '' ?>"><a class="page-link" href="<?= h(dashPageUrl($n, $searchTerm, $letter, $starredOnly)) ?>"><?= $n ?></a></li>
+            <?php endfor; ?>
+            <li class="page-item <?= $page >= $pageCount ? 'disabled' : '' ?>"><a class="page-link" href="<?= h(dashPageUrl(min($pageCount, $page + 1), $searchTerm, $letter, $starredOnly)) ?>">Next</a></li>
+          </ul>
+        </nav>
         <div id="noResultsCard" class="card empty-search text-center mt-3" hidden>
             <div class="card-body">
                 <h5 id="noResultsTitle">No matching projects</h5>
                 <p class="text-muted small mb-0">Click here to create this project.</p>
             </div>
         </div>
-        <?php if (!$projects): ?><p class="text-muted">No projects found in htdocs. Create your first project above.</p><?php endif; ?>
+        <?php if (!$projects): ?><p class="text-muted"><?= $starredOnly ? 'No starred projects match this view.' : 'No projects match this view.' ?></p><?php endif; ?>
     </div>
 
     <div class="modal fade" id="blankProject" tabindex="-1" aria-labelledby="createTitle" aria-hidden="true">
@@ -444,15 +666,48 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
         </div>
     </div>
 
-    <div class="modal fade" id="projectSettingsModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post">
-      <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>"><input type="hidden" name="action" value="save_project_settings"><input type="hidden" name="original_project" id="settingsOriginal">
-      <div class="modal-header"><h5 class="modal-title">⚙️ Project Settings</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body"><label class="form-label">Project folder name</label><input class="form-control mb-3" id="settingsName" name="new_project_name" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}">
-      <label class="form-label">Git origin HTTPS URL</label><input class="form-control mb-2" id="settingsRemote" name="project_remote" type="url" placeholder="https://github.com/owner/repo.git"><div class="form-text mb-3">Updates the actual Git origin; clearing removes origin. Requires a Git repository.</div>
-      <label class="form-label">Connected MySQL databases</label><input class="form-control mb-2" id="settingsDatabases" name="project_databases" placeholder="app_db, reporting_db"><div class="form-text mb-3">Comma-separated names. Linking does not create or rename databases.</div>
-      <label class="form-label">Notes</label><textarea class="form-control" id="settingsNotes" name="project_notes" rows="3"></textarea></div>
-      <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Save Changes</button></div>
-    </form></div></div>
+    <div class="modal fade" id="projectSettingsModal" tabindex="-1" aria-labelledby="projectSettingsTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post">
+          <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>">
+          <input type="hidden" name="action" value="save_project_settings">
+          <input type="hidden" name="original_project" id="settingsOriginal">
+          <input type="hidden" name="change_origin" id="changeOrigin" value="0">
+          <div class="modal-header"><h5 class="modal-title" id="projectSettingsTitle">Project Settings</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body">
+            <label for="settingsName" class="form-label">Project folder name</label>
+            <input class="form-control mb-3" id="settingsName" name="new_project_name" required maxlength="100">
+            <label class="form-check mb-2" id="initializeGitOption">
+              <input type="checkbox" class="form-check-input" id="initializeGit" name="initialize_git" value="1">
+              Initialize Git for this project
+            </label>
+            <label for="settingsRemote" class="form-label">Git origin</label>
+            <input class="form-control" id="settingsRemote" name="project_remote" placeholder="https://github.com/owner/repo.git" aria-describedby="settingsOriginStatus">
+            <p class="form-text mb-3" id="settingsOriginStatus" aria-live="polite"></p>
+            <label for="settingsDatabases" class="form-label">Connected MySQL databases</label>
+            <input class="form-control mb-3" id="settingsDatabases" name="project_databases" placeholder="app_db, reporting_db">
+            <div class="row g-2 mb-3">
+              <div class="col">
+                <label for="settingsGroup" class="form-label">Project group</label>
+                <input class="form-control" id="settingsGroup" name="project_group" list="projectGroupOptions" maxlength="60" placeholder="Ungrouped">
+                <datalist id="projectGroupOptions"><?php foreach ($projectGroups as $name => $color): ?><option value="<?= h($name) ?>" data-color="<?= h($color) ?>"><?php endforeach; ?></datalist>
+              </div>
+              <div class="col-auto">
+                <label for="settingsGroupColor" class="form-label">Group color</label>
+                <input type="color" class="form-control form-control-color" id="settingsGroupColor" name="group_color" value="#4566b0">
+              </div>
+            </div>
+            <div class="d-flex gap-2 align-items-center mb-3">
+              <label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="useCardColor" name="use_card_color" value="1"> Use custom card color</label>
+              <input type="color" class="form-control form-control-color" id="settingsCardColor" name="card_color" aria-label="Card color" value="#4566b0">
+            </div>
+            <label for="settingsNotes" class="form-label">Notes</label>
+            <textarea class="form-control" id="settingsNotes" name="project_notes" rows="3"></textarea>
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Save Changes</button></div>
+        </form>
+      </div>
+    </div>
     <div class="modal fade" id="cloneGitModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><form class="modal-content async-create-form" data-kind="clone">
       <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>"><input type="hidden" name="action" value="clone">
       <div class="modal-header"><h5 class="modal-title">🔀 Clone Git Repository</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -473,6 +728,157 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
       <div class="operation-progress mt-3" hidden><div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%">Installing…</div></div><div class="small mt-1 operation-stage">Waiting</div><pre class="small bg-body-tertiary p-2 mt-2 operation-log" style="max-height:220px;overflow:auto;white-space:pre-wrap"></pre></div></div>
       <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><button type="submit" class="btn btn-primary">Create Framework</button></div>
     </form></div></div>
+    <div class="modal fade" id="cmsTemplateModal" tabindex="-1" aria-labelledby="cmsTemplateTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <form class="modal-content async-create-form" data-kind="template">
+                <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>">
+                <input type="hidden" name="action" value="template">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cmsTemplateTitle">Install CMS or Custom Template</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="cmsProjectName" class="form-label">Project folder name</label>
+                    <input id="cmsProjectName" name="project" class="form-control mb-3" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" required>
+                    <label for="cmsTemplate" class="form-label">Template</label>
+                    <select id="cmsTemplate" name="template" class="form-select" required>
+                        <?php foreach (['cms' => 'CMS', 'framework' => 'Custom frameworks'] as $category => $group): ?>
+                        <?php $options = array_filter($installTemplates, static fn($template) => $template['category'] === $category); ?>
+                        <?php if ($options): ?>
+                        <optgroup label="<?= h($group) ?>">
+                            <?php foreach ($options as $key => $template):
+                                $source = match ($template['method']) {
+                                    'zip', 'release' => 'Release ZIP',
+                                    'git' => 'Git',
+                                    default => 'Composer',
+                                };
+                            ?>
+                            <option value="<?= h($key) ?>" data-source="<?= h($source . ' · ' . $template['source']) ?>"><?= h($template['label']) ?></option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                        <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="form-text text-break" id="cmsTemplateSource"></p>
+                    <p class="small">Complete database or account setup in the CMS installer after the download.</p>
+                    <a href="templates.php">Manage custom templates</a>
+                    <div class="operation-progress mt-3" hidden>
+                        <div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%">Installing…</div></div>
+                        <div class="small mt-1 operation-stage"></div>
+                        <pre class="small bg-body-tertiary p-2 mt-2 operation-log" style="max-height:220px;overflow:auto;white-space:pre-wrap"></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button class="btn btn-primary" type="submit">Install template</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <?php
+    $restoreError = $_SESSION['dashboard_open_restore'] ?? '';
+    $restoreKind = $_SESSION['dashboard_restore_kind'] ?? 'mxdp';
+    $restoreBackup = null;
+    $restoreId = $_SESSION['dashboard_restore_id'] ?? $_GET['restore_backup'] ?? '';
+    unset($_SESSION['dashboard_open_restore'], $_SESSION['dashboard_restore_kind'], $_SESSION['dashboard_restore_id']);
+    if ($restoreId !== '') {
+        try { $restoreBackup = dashBackupRecord($restoreId); }
+        catch (Throwable $e) { $restoreError = $e->getMessage(); }
+    }
+    ?>
+    <div id="archiveDropOverlay" class="position-fixed top-0 start-0 w-100 h-100 bg-primary bg-opacity-75 text-white" style="z-index: 1100; pointer-events: none;" hidden>
+        <div class="d-flex h-100 justify-content-center align-items-center"><p class="h3">Drop a ZIP or MXDP file to import</p></div>
+    </div>
+    <div class="modal fade" id="restoreMxdpModal" tabindex="-1" aria-labelledby="restoreMxdpTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="restore.php" enctype="multipart/form-data" class="modal-content" id="archiveRestoreForm">
+          <input type="hidden" name="backup_id" id="restoreBackupId" value="<?= h($restoreBackup['id'] ?? '') ?>">
+          <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>">
+          <div class="modal-header"><h5 class="modal-title" id="restoreMxdpTitle">Restore an MXDP backup</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body">
+            <?php if ($restoreError !== ''): ?>
+              <div class="alert alert-danger" role="alert"><?= h($restoreError) ?></div>
+            <?php endif; ?>
+            <label for="restoreProject" class="form-label">Project folder name</label>
+            <input id="restoreProject" name="project" class="form-control" maxlength="100" value="<?= h($restoreBackup['project'] ?? '') ?>" required>
+            <div class="form-text mb-3">A backup with files requires a new folder. A database-only backup can use an existing project.</div>
+            <p id="restoreSavedName" class="form-text" <?= $restoreBackup ? '' : 'hidden' ?>><?= h($restoreBackup['filename'] ?? '') ?></p>
+            <div id="restoreUploadFields" <?= $restoreBackup ? 'hidden' : '' ?>>
+            <label for="restoreArchive" class="form-label" id="restoreArchiveLabel">MXDP file</label>
+            <input id="restoreArchive" type="file" name="archive" accept=".mxdp" class="form-control mb-3" <?= $restoreBackup ? 'disabled' : 'required' ?>>
+            </div>
+            <div id="restorePasswordFields">
+            <label for="restorePassword" class="form-label">Backup password</label>
+            <input id="restorePassword" type="password" name="password" class="form-control" autocomplete="current-password" required>
+            <label class="form-check mt-2"><input class="form-check-input" type="checkbox" data-password-toggle="restorePassword"> Show password</label>
+            </div>
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Open backup</button></div>
+        </form>
+      </div>
+    </div>
+
+    <?php if ($setup = $_SESSION['dashboard_db_setup'] ?? null): ?>
+    <div class="modal fade" id="databaseSetupModal" tabindex="-1" aria-labelledby="databaseSetupTitle" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <form method="post" action="database_setup.php" class="modal-content" id="databaseSetupForm">
+          <input type="hidden" name="csrf" value="<?= h($_SESSION['dashboard_csrf']) ?>">
+          <input type="hidden" name="project" value="<?= h($setup['project']) ?>">
+          <div class="modal-header"><h5 class="modal-title" id="databaseSetupTitle">Set up databases for <?= h($setup['project']) ?>?</h5></div>
+          <div class="modal-body">
+          <?php if (!empty($setup['notice'])): ?>
+            <div class="alert alert-warning" role="alert"><?= h($setup['notice']) ?></div>
+          <?php endif; ?>
+          <?php if ($setup['files']): ?>
+            <p>Select the SQL files to import. Each selected file creates a new MySQL database and links it to the project.</p>
+            <?php foreach ($setup['files'] as $index => $file): ?>
+            <div class="row g-2 align-items-center mb-2">
+              <div class="col-md-7 form-check ps-4 text-break">
+                <input type="checkbox" class="form-check-input sql-file-choice" id="sqlFile<?= $index ?>" name="sql_files[]" value="<?= $index ?>">
+                <label for="sqlFile<?= $index ?>" class="form-check-label"><?= h($file['label']) ?></label>
+              </div>
+              <div class="col-md-5">
+                <label for="sqlDatabase<?= $index ?>" class="visually-hidden">Database name for <?= h($file['label']) ?></label>
+                <input class="form-control" id="sqlDatabase<?= $index ?>" name="database_names[<?= $index ?>]" maxlength="64" value="<?= h($file['name']) ?>" disabled>
+              </div>
+            </div>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <p class="mb-0">No SQL files were found.</p>
+          <?php endif; ?>
+          </div>
+          <div class="modal-footer">
+            <button name="decision" value="skip" class="btn btn-secondary" formnovalidate><?= $setup['files'] ? 'Skip database setup' : 'Done' ?></button>
+            <?php if ($setup['files']): ?><button name="decision" value="import" class="btn btn-primary" id="importDatabases" disabled>Import and link databases</button><?php endif; ?>
+          </div>
+        </form>
+      </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="modal fade" id="todoModal" tabindex="-1" aria-labelledby="todoTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="todoTitle">To-do list</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="todoForm" class="d-flex gap-2 mb-3">
+                        <label for="todoInput" class="visually-hidden">New task</label>
+                        <input id="todoInput" class="form-control" placeholder="Add a task" maxlength="200" autocomplete="off" required>
+                        <button class="btn btn-primary" type="submit" disabled>Add</button>
+                    </form>
+                    <p id="todoError" class="alert alert-danger py-2" role="alert" hidden></p>
+                    <p id="todoEmpty" class="text-body-secondary mb-0">No tasks yet.</p>
+                    <ul id="todoList" class="list-group"></ul>
+                    <p id="todoStatus" class="small text-body-secondary mt-3 mb-0" aria-live="polite" hidden></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="removeProjectModal" tabindex="-1" aria-labelledby="removeProjectTitle" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <form method="post" class="modal-content" id="removeProjectForm">
@@ -486,6 +892,17 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                 </div>
                 <div class="modal-body">
                     <p>This will permanently delete <strong id="removeProjectDisplay"></strong> and all its files, including local Git history.</p>
+                    <p id="removeLinkedDatabases" class="small text-muted"></p>
+                    <div class="form-check"><input class="form-check-input" id="removeDatabases" name="delete_databases" type="checkbox"><label class="form-check-label" for="removeDatabases">Delete linked databases</label></div>
+                    <div class="form-check"><input class="form-check-input" id="removeBackupFull" name="backup_full" type="checkbox"><label class="form-check-label" for="removeBackupFull">Save an MXDP backup of the project and linked databases</label></div>
+                    <div class="form-check mb-2"><input class="form-check-input" id="removeBackupDatabase" name="backup_database" type="checkbox"><label class="form-check-label" for="removeBackupDatabase">Save an MXDP backup of linked databases only</label></div>
+                    <div id="removePasswordGroup" class="mb-3" hidden>
+                      <label for="removeBackupPassword" class="form-label">Backup password</label>
+                      <input id="removeBackupPassword" name="backup_password" type="password" class="form-control mb-2" minlength="8" maxlength="1024" autocomplete="new-password" disabled>
+                      <label for="removeBackupConfirm" class="form-label">Confirm backup password</label>
+                      <input id="removeBackupConfirm" name="backup_password_confirm" type="password" class="form-control" minlength="8" maxlength="1024" autocomplete="new-password" disabled>
+                      <label class="form-check mt-2"><input id="showRemovePasswords" class="form-check-input" type="checkbox" data-password-toggle="removeBackupPassword removeBackupConfirm"> Show passwords</label>
+                    </div>
                     <label for="removeProjectConfirm" class="form-label">Type the project name to confirm:</label>
                     <input type="text" class="form-control" id="removeProjectConfirm" autocomplete="off" required>
                     <div class="form-text">This action cannot be undone. Back up your project first.</div>
@@ -508,9 +925,62 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
         const removeDisplay = document.getElementById('removeProjectDisplay');
         const removeConfirm = document.getElementById('removeProjectConfirm');
         const removeSubmit = document.getElementById('removeProjectSubmit');
+        const removeDatabases = document.getElementById('removeDatabases');
+        const fullBackup = document.getElementById('removeBackupFull');
+        const databaseBackup = document.getElementById('removeBackupDatabase');
+        const passwordGroup = document.getElementById('removePasswordGroup');
+        const backupPassword = document.getElementById('removeBackupPassword');
+        const backupConfirm = document.getElementById('removeBackupConfirm');
+        function updateBackupPassword() {
+            const needsPassword = fullBackup.checked || databaseBackup.checked;
+            passwordGroup.hidden = !needsPassword;
+            for (const field of [backupPassword, backupConfirm]) {
+                field.required = needsPassword;
+                field.disabled = !needsPassword;
+                if (!needsPassword) {
+                    field.value = '';
+                    field.type = 'password';
+                }
+            }
+            if (!needsPassword) document.getElementById('showRemovePasswords').checked = false;
+        }
+        fullBackup.addEventListener('change', () => {
+            if (fullBackup.checked) databaseBackup.checked = false;
+            updateBackupPassword();
+        });
+        databaseBackup.addEventListener('change', () => {
+            if (databaseBackup.checked) fullBackup.checked = false;
+            updateBackupPassword();
+        });
+        const databaseSetup = document.getElementById('databaseSetupModal');
+        if (databaseSetup) {
+            const choices = [...databaseSetup.querySelectorAll('.sql-file-choice')];
+            for (const choice of choices) {
+                choice.addEventListener('change', () => {
+                    const name = document.getElementById('sqlDatabase' + choice.value);
+                    name.disabled = !choice.checked;
+                    name.required = choice.checked;
+                    document.getElementById('importDatabases').disabled = !choices.some(input => input.checked);
+                });
+            }
+            bootstrap.Modal.getOrCreateInstance(databaseSetup, { backdrop: 'static', keyboard: false }).show();
+        }
+        <?php if ($restoreError !== '' || $restoreBackup || ($_GET['restore'] ?? '') === '1'): ?>
+        if (!databaseSetup) {
+            const modal = document.getElementById('restoreMxdpModal');
+            modal.dataset.openKind = <?= json_encode($restoreKind) ?>;
+            window.addEventListener('DOMContentLoaded', () => bootstrap.Modal.getOrCreateInstance(modal).show());
+        }
+        <?php endif; ?>
         removeModal.addEventListener('show.bs.modal', event => {
             const button = event.relatedTarget;
             const name = button ? button.dataset.project : '';
+            const databases = event.relatedTarget?.dataset.databases || '';
+            document.getElementById('removeLinkedDatabases').textContent = databases
+                ? 'Linked databases: ' + databases : 'No databases linked to this project.';
+            for (const option of [removeDatabases, fullBackup, databaseBackup]) option.checked = false;
+            databaseBackup.disabled = removeDatabases.disabled = !databases;
+            updateBackupPassword();
             removeName.value = name;
             removeDisplay.textContent = name;
             removeConfirm.value = '';
@@ -525,14 +995,6 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
         document.getElementById('removeProjectForm').addEventListener('submit', event => {
             if (removeConfirm.value !== removeName.value) event.preventDefault();
             else removeSubmit.disabled = true;
-        });
-        document.getElementById('projectSettingsModal').addEventListener('show.bs.modal', event => {
-            const b=event.relatedTarget;if(!b)return;
-            document.getElementById('settingsOriginal').value=b.dataset.project;
-            document.getElementById('settingsName').value=b.dataset.project;
-            document.getElementById('settingsRemote').value=b.dataset.remote||'';
-            document.getElementById('settingsDatabases').value=b.dataset.databases||'';
-            document.getElementById('settingsNotes').value=b.dataset.notes||'';
         });
         document.querySelectorAll('.async-create-form').forEach(form=>form.addEventListener('submit',async event=>{
             event.preventDefault();const button=form.querySelector('[type="submit"]');const area=form.querySelector('.operation-progress');const bar=area.querySelector('.progress-bar');const log=area.querySelector('.operation-log');const stage=area.querySelector('.operation-stage');
@@ -552,10 +1014,26 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                     }
                 }
                 if(!completed)throw new Error('Installation stream ended unexpectedly');
-                if(bar.classList.contains('bg-success'))setTimeout(()=>window.location.reload(),1100);
+                if (bar.classList.contains('bg-success')) {
+                    setTimeout(() => {
+                        if (['framework', 'template'].includes(form.dataset.kind)) {
+                            const dashboard = new URL('index.php', window.location.href);
+                            dashboard.searchParams.set('q', form.elements.project.value.trim());
+                            window.location.assign(dashboard);
+                        } else {
+                            window.location.reload();
+                        }
+                    }, 1100);
+                }
             }catch(e){log.textContent+='Error: '+e.message+'\n';bar.classList.add('bg-danger');bar.classList.remove('progress-bar-animated');bar.textContent='Failed';}
             finally{button.disabled=false;}
         }));
+        const cmsTemplate = document.getElementById('cmsTemplate');
+        function updateTemplateSource() {
+            document.getElementById('cmsTemplateSource').textContent = cmsTemplate.selectedOptions[0]?.dataset.source ?? '';
+        }
+        cmsTemplate.addEventListener('change', updateTemplateSource);
+        updateTemplateSource();
         const instances = {};
         const starterModals = [{
                 modal: 'blankProject',
@@ -576,7 +1054,7 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
             const editor = monaco.editor.create(document.getElementById('editor' + suffix), {
                 value: output.value,
                 language: 'php',
-                theme: 'vs',
+                theme: document.documentElement.dataset.bsTheme === 'dark' ? 'vs-dark' : 'vs',
                 automaticLayout: true,
                 fontSize: 14,
                 fontFamily: 'Consolas, monospace',
@@ -717,19 +1195,17 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
         }
 
         function filterProjects() {
-            const query = searchInput.value.trim().toLowerCase();
-            let matches = 0;
-            projectCards.forEach(card => {
-                const match = card.dataset.name.includes(query);
-                card.hidden = !match;
-                card.style.display = match ? '' : 'none';
-                if (match) matches++;
-            });
-            noResults.hidden = !query || matches > 0;
-            if (!noResults.hidden) document.getElementById('noResultsTitle').textContent = '➕ Create project: ' + query;
+            const query = searchInput.value.trim();
+            const url = new URL(window.location.href);
+            url.searchParams.delete('page');
+            url.searchParams.delete('letter');
+            if (query) url.searchParams.set('q', query);
+            else url.searchParams.delete('q');
+            window.location.assign(url.toString());
         }
+        let searchTimer;
         document.getElementById('showSearch').addEventListener('click', openSearch);
-        searchInput.addEventListener('input', filterProjects);
+        searchInput.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(filterProjects, 420); });
         noResults.addEventListener('click', () => {
             document.getElementById('projectName').value = searchInput.value.trim().replace(/[^a-zA-Z0-9_-]/g, '');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('blankProject')).show();
@@ -746,17 +1222,53 @@ $dbSizes=dashDbSizes(array_unique($dbRequested));
                 filterProjects();
             }
         });
+        // Measure only visible cards, asynchronously, after the page has rendered.
+        async function loadProjectSizes() {
+            const names = [...document.querySelectorAll('.project-file-size')].map(el => el.dataset.project);
+            if (!names.length) return;
+            try {
+                const response = await fetch('project_stats.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projects: names }),
+                    cache: 'no-store'
+                });
+                if (!response.ok) throw new Error('Statistics unavailable');
+                const stats = await response.json();
+                for (const name of names) {
+                    const file = document.querySelectorAll('.project-file-size');
+                    const db = document.querySelectorAll('.project-db-size');
+                    const f = [...file].find(el => el.dataset.project === name);
+                    const d = [...db].find(el => el.dataset.project === name);
+                    if (f) f.textContent = '📁 Files: ' + (stats[name]?.files ?? 'Unavailable');
+                    if (d) d.textContent = '🗄️ Database: ' + (stats[name]?.database ?? 'Unavailable');
+                }
+            } catch (e) {
+                document.querySelectorAll('.project-file-size').forEach(el => el.textContent = '📁 Files: Unavailable');
+                document.querySelectorAll('.project-db-size').forEach(el => { if (el.textContent.includes('Loading')) el.textContent = '🗄️ Database: Unavailable'; });
+            }
+        }
+        window.addEventListener('load', () => setTimeout(loadProjectSizes, 0));
         document.querySelectorAll('.launch-helper').forEach(button => {
             button.addEventListener('click', async () => {
                 try {
-                    const response = await fetch(button.dataset.helper + '?path=' + encodeURIComponent(button.dataset.path));
-                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    const response = await fetch(button.dataset.helper, {
+                        method: 'POST',
+                        body: new URLSearchParams({
+                            project: button.dataset.project,
+                            csrf: <?= json_encode($_SESSION['dashboard_csrf']) ?>
+                        })
+                    });
+                    if (!response.ok) throw new Error(await response.text());
                 } catch (error) {
                     alert('Could not launch helper: ' + error.message);
                 }
             });
         });
     </script>
+<script src="archive-ui.js" defer></script>
+<script src="project-cards.js" defer></script>
+<script src="todo.js" defer></script>
 </body>
 
 </html>

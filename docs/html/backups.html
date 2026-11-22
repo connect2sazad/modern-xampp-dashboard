@@ -1,0 +1,102 @@
+<!-- Generated from docs/BACKUPS_AND_DATABASES.md by docs/build.ps1. -->
+<h1 id="backups-and-databases">Backups and databases</h1>
+<p><a href="docs.php?page=overview">Documentation home</a></p>
+<h2 id="link-an-existing-database">Link an existing database</h2>
+<ol>
+<li>Create or locate the database in the local MySQL or MariaDB server.</li>
+<li>Open the project's gear icon and put the names in <strong>Connected MySQL databases</strong>, separated by commas. Save changes.</li>
+<li>Use <strong>··· → Open in phpMyAdmin</strong> on that card to open a linked database.</li>
+</ol>
+<p>Linking stores database names in dashboard metadata. It does not write to the project's <code>.env</code>, <code>wp-config.php</code>, or other connection configuration. Keep the application's database settings in sync yourself. The dashboard uses one database server configuration for size lookups, exports, imports, and deletion. The phpMyAdmin links open the local phpMyAdmin installation, whose own server configuration may differ.</p>
+<h2 id="choose-a-backup-type">Choose a backup type</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Contents</th>
+<th>Where it goes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Create MXDP backup → Project files and linked databases</strong></td>
+<td>Project files plus SQL dumps of every linked database</td>
+<td>Saved to the dashboard's Backups catalog and offered for download</td>
+</tr>
+<tr>
+<td><strong>Create MXDP backup → Linked databases only</strong></td>
+<td>SQL dumps of the linked databases</td>
+<td>Saved to the catalog and offered for download</td>
+</tr>
+<tr>
+<td><strong>Download ZIP + DB</strong></td>
+<td>An unencrypted ZIP containing an inner <code>project.zip</code>, <code>manifest.json</code>, and numbered SQL dumps for linked databases</td>
+<td>Browser download</td>
+</tr>
+<tr>
+<td><strong>Remove project → Save an MXDP backup</strong></td>
+<td>The full or database-only backup selected in the remove dialog</td>
+<td>Saved in Backups before project removal begins</td>
+</tr>
+</tbody>
+</table>
+<p>New backups exclude Git metadata and filesystem links. Keep a separate Git copy if you need repository history. Review downloaded ZIPs before sharing them because they can contain application configuration and database data.</p>
+<p>MXDP is a dashboard-specific encrypted wrapper around a ZIP payload. Set and confirm your password when creating one. You will need that password to restore it. Keep the password separately because the dashboard does not store a recovery copy.</p>
+<h2 id="manage-and-restore-archives">Manage and restore archives</h2>
+<p>Open <strong>Backups</strong> to see saved MXDPs, their creation time, size, database inclusion, and password protection. Choose <strong>Download</strong>, <strong>Restore</strong>, or <strong>Delete</strong>. Deleting an archive requires typing its full displayed filename. Older MXDP archives can show <strong>Unknown</strong> for database inclusion if they predate catalog metadata.</p>
+<p>To use an archive already on disk, select <strong>New Project → Restore an MXDP backup</strong> or <strong>Import a ZIP project</strong>. You can also drop a single archive anywhere on the dashboard.</p>
+<ol>
+<li>Provide the project folder name and choose the file. For MXDP, enter the backup password. The show-password control is available.</li>
+<li>An archive with files requires a <strong>new</strong> project directory. A database-only MXDP can target an existing project or a new empty one.</li>
+<li>After restoring, select the SQL files to import in the database setup dialog. Skip this step if you only need the project files.</li>
+<li>Open the project and update its application-level database configuration if the database name or credentials differ.</li>
+</ol>
+<p>The dashboard accepts its own ZIP export format and ordinary project ZIPs. For an ordinary ZIP, put the desired project folders and files at the archive root. A ZIP with an extra top-level folder retains that folder after extraction.</p>
+<h2 id="import-and-link-sql-files">Import and link SQL files</h2>
+<p>The database setup dialog appears after a Git clone or project archive restore. It offers SQL files found in the project, plus any database dumps staged from a dashboard archive.</p>
+<ul>
+<li>Select one to 20 SQL files and give each a distinct new database name. Existing databases are protected from overwrite.</li>
+<li>Each successful import creates and links its target database. If a later import fails, earlier successful imports remain linked.</li>
+<li>Use SQL that can run in a single selected schema. The dashboard uses a temporary account restricted to that schema. Scripts that need another schema, administrative privileges, or an explicit privileged definer can fail.</li>
+<li>Complete the import while the setup dialog and staging files are available. If staging expires, you can reopen a database-only archive for the existing project. A full archive still requires a new project folder if its files are restored again.</li>
+</ul>
+<h2 id="remove-a-project">Remove a project</h2>
+<p>Use <strong>··· → Remove project</strong>, review the linked databases, and type the exact project name. The options in the dialog control what happens.</p>
+<ul>
+<li><strong>Delete linked databases</strong> adds database removal to the operation. Leave it unchecked to keep the databases.</li>
+<li>Choose either <strong>Save an MXDP backup of the project and linked databases</strong> or <strong>Save an MXDP backup of linked databases only</strong>. If the backup fails, project removal does not start.</li>
+<li>The dashboard blocks database deletion when another dashboard project is linked to the same name. External apps are outside that check.</li>
+</ul>
+<p>Removal is permanent. File removal and database drops are separate operations. If the dashboard reports a partial failure, check which files and databases remain before retrying.</p>
+<h2 id="limits">Limits</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MXDP password</td>
+<td>8 to 1,024 bytes</td>
+</tr>
+<tr>
+<td>MXDP archive</td>
+<td>50 MiB, with lower upload limits possible in PHP or Apache</td>
+</tr>
+<tr>
+<td>Project ZIP extraction</td>
+<td>10,000 entries and 200 MiB uncompressed</td>
+</tr>
+<tr>
+<td>Dashboard bundle staging</td>
+<td>250 MiB total for the inner archive and SQL files</td>
+</tr>
+<tr>
+<td>Databases per backup or import</td>
+<td>20</td>
+</tr>
+</tbody>
+</table>
+<p><a href="docs.php?page=setup">Database connection settings and troubleshooting</a></p>
