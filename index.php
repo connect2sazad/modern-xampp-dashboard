@@ -399,6 +399,7 @@ function dashPageUrl(int $page, string $search, string $letter, bool $starred = 
                     </svg>
                 </button>
                 <a href="backups.php" class="btn btn-outline-secondary">💾 Backups</a>
+                <a href="docs.php" class="btn btn-outline-secondary">Docs</a>
                 <a href="settings.php" class="btn btn-outline-dark">⚙️ Settings</a>
 
             </div>

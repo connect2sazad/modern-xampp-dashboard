@@ -1,0 +1,192 @@
+<!-- Generated from docs/USER_GUIDE.md by docs/build.ps1. -->
+<h1 id="user-guide">User guide</h1>
+<p><a href="docs.php?page=overview">Documentation home</a></p>
+<h2 id="find-and-organize-projects">Find and organize projects</h2>
+<p>The dashboard lists supported direct subfolders of <code>C:\xampp\htdocs</code>. Use <strong>Search</strong> or <strong>Ctrl+F</strong> to find a project by folder name. The alphabet rail filters by the first character and <strong>All</strong> clears that letter filter. <strong>Starred projects</strong> shows the favorites you marked with the star on a project card. <strong>List</strong> and <strong>Tiles</strong> switch layouts without navigating and remember the selection in the browser.</p>
+<p>Open the gear icon on a card for <strong>Project Settings</strong>. You can rename the folder, add notes, link MySQL databases, configure Git, and set appearance. Enter a <strong>Project group</strong> name to group related cards together. Matching group names share the <strong>Group color</strong>. Enable <strong>Use custom card color</strong> to override a card's accent. Clearing the group name moves the project to <strong>Ungrouped</strong>.</p>
+<p>Disk and database sizes load after the page renders. Database size requires a reachable server and configured links. The dashboard may show a cached result for up to five minutes.</p>
+<table>
+<thead>
+<tr>
+<th>Card action</th>
+<th>Use it to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Open</strong></td>
+<td>Launch the app using its detected public entry point or a saved launch file</td>
+</tr>
+<tr>
+<td><strong>Editor</strong></td>
+<td>Browse and edit project files</td>
+</tr>
+<tr>
+<td><strong>Developer</strong></td>
+<td>Inspect the entry point and runtime, copy useful commands, or run project tools</td>
+</tr>
+<tr>
+<td><strong>⚙</strong></td>
+<td>Change project settings</td>
+</tr>
+<tr>
+<td><strong>···</strong></td>
+<td>Open Explorer, VS Code, or linked databases, create or download archives, or remove the project</td>
+</tr>
+</tbody>
+</table>
+<h2 id="create-projects">Create projects</h2>
+<p>From <strong>New Project</strong>, pick the workflow that matches the source.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Blank Project</strong></td>
+<td>Creates an <code>index.php</code> starter and any selected stub files</td>
+</tr>
+<tr>
+<td><strong>Blank Git Project</strong></td>
+<td>Creates the same starter, initializes Git on <code>main</code> or <code>master</code>, and optionally commits and pushes to an empty HTTPS remote</td>
+</tr>
+<tr>
+<td><strong>Clone a Git Project</strong></td>
+<td>Clones an HTTPS repository. You can use its default branch or enter a branch or tag.</td>
+</tr>
+<tr>
+<td><strong>Blank Framework Project</strong></td>
+<td>Uses Composer to scaffold Laravel, Yii 2 Basic, CakePHP, Symfony, or CodeIgniter 4</td>
+</tr>
+<tr>
+<td><strong>Install CMS or Custom Template</strong></td>
+<td>Fetches the selected package, repository, or official release ZIP and streams the install log</td>
+</tr>
+<tr>
+<td><strong>Restore an MXDP backup / Import a ZIP project</strong></td>
+<td>Imports an archive from disk. You can also drop one ZIP or MXDP file on the dashboard.</td>
+</tr>
+</tbody>
+</table>
+<p>New-project forms accept up to 80 letters, numbers, underscores, or hyphens, starting with a letter or number. Use a new folder name. A failed Git or Composer installation can leave a partially created folder. Read the job output and inspect that folder before retrying with the same name.</p>
+<h3 id="framework-entry-points">Framework entry points</h3>
+<table>
+<thead>
+<tr>
+<th>Framework</th>
+<th>Public directory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Laravel</td>
+<td><code>public/</code></td>
+</tr>
+<tr>
+<td>Yii 2 Basic</td>
+<td><code>web/</code></td>
+</tr>
+<tr>
+<td>CakePHP</td>
+<td><code>webroot/</code></td>
+</tr>
+<tr>
+<td>Symfony</td>
+<td><code>public/</code></td>
+</tr>
+<tr>
+<td>CodeIgniter 4</td>
+<td><code>public/</code></td>
+</tr>
+</tbody>
+</table>
+<p>Use the card's <strong>Open</strong> button. The dashboard detects supported index files in the public directory. For newly scaffolded projects with a public entry point and no root <code>.htaccess</code>, it can add an Apache redirect from the project root. It preserves a template's own root Apache rules. If the starter contains only a skeleton and no web entry point, complete the framework setup first.</p>
+<h3 id="built-in-cms-catalog">Built-in CMS catalog</h3>
+<table>
+<thead>
+<tr>
+<th>Source type</th>
+<th>Templates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Official release ZIP</td>
+<td>WordPress, Joomla, Grav</td>
+</tr>
+<tr>
+<td>Composer</td>
+<td>Drupal, Drupal CMS, Craft CMS, Kirby Starterkit, Statamic, Concrete CMS, Silverstripe CMS, October CMS, TYPO3</td>
+</tr>
+<tr>
+<td>HTTPS Git</td>
+<td>ProcessWire, Backdrop CMS</td>
+</tr>
+</tbody>
+</table>
+<p>The selector displays the source. After the files install, use <strong>Open</strong> to continue the CMS's setup, or follow the template's setup instructions if it requires a CLI step. A CMS may require its own PHP extensions, compatible PHP version, database, account, or license. The dashboard does not create a CMS administrator or fill its database configuration for you.</p>
+<h3 id="custom-cms-and-framework-templates">Custom CMS and framework templates</h3>
+<p>In <strong>Settings → Manage custom templates</strong>, enter a name, choose <strong>CMS</strong> or <strong>Framework</strong>, and pick a source.</p>
+<ul>
+<li><strong>Git clone</strong> accepts an HTTPS repository URL and an optional branch or tag. Enable <strong>Install Composer dependencies after Git clone</strong> if the repository has a <code>composer.json</code>.</li>
+<li><strong>Composer</strong> accepts a <code>vendor/package</code> starter package and an optional version constraint.</li>
+<li><strong>Public folder</strong> is relative to the project, such as <code>public</code> or <code>frontend/web</code>. Leave it blank for the project root.</li>
+</ul>
+<p>Save the template and select it under <strong>Install CMS or Custom Template</strong>. Editing or removing a saved template changes future installs. Installed projects keep their recorded source and public folder.</p>
+<h2 id="work-on-a-project">Work on a project</h2>
+<h3 id="editor-and-plain-php-or-html-tools">Editor and plain PHP or HTML tools</h3>
+<p><strong>Editor</strong> lists project files and opens them as Monaco tabs. Create a file or folder by entering a project-relative path, or open a file to edit, save, rename, or delete it. Create a parent folder before creating a file inside it. Unsaved changes remain in their tabs while you switch between files. The editor handles UTF-8 text files up to 2 MiB and prompts before you leave the page with unsaved edits.</p>
+<p>On <strong>Developer</strong>, plain projects can set a <strong>Launch file</strong>, such as <code>pages/home.php</code>. Clear it to use automatic index detection. The PHP syntax checker runs <code>php -l</code> on a selected project-relative PHP file. A passing check verifies syntax. Run the app separately to check runtime behavior.</p>
+<h3 id="composer">Composer</h3>
+<p>For projects with <code>composer.json</code>, <strong>Developer</strong> shows the declared PHP requirement, lockfile and autoloader status, detectable missing Apache PHP extensions, and <code>.env</code> presence when <code>.env.example</code> exists. It also provides copyable project paths, app URLs, and PowerShell commands.</p>
+<table>
+<thead>
+<tr>
+<th>Button</th>
+<th>What it runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Install</td>
+<td>Installs from <code>composer.lock</code> when present. Without it, Composer resolves versions and can write a lockfile.</td>
+</tr>
+<tr>
+<td>Update</td>
+<td>Resolves dependency versions again and can change both <code>composer.lock</code> and installed packages</td>
+</tr>
+<tr>
+<td>Validate</td>
+<td>Checks the Composer manifest and its lockfile consistency</td>
+</tr>
+<tr>
+<td>Check platform</td>
+<td>Checks PHP and extension requirements using the lockfile when available</td>
+</tr>
+<tr>
+<td>Outdated packages</td>
+<td>Lists outdated direct dependencies</td>
+</tr>
+<tr>
+<td>Audit dependencies</td>
+<td>Audits locked packages for known advisories</td>
+</tr>
+</tbody>
+</table>
+<p>The panel displays live output and offers <strong>Copy output</strong>. Use it for details when a job fails. The dashboard runs one Composer job per project at a time. Composer jobs run with the account and environment available to Apache. Use project sources you trust, since Composer can run project scripts and plugins.</p>
+<h3 id="git-and-desktop-tools">Git and desktop tools</h3>
+<p>For a folder without Git, select <strong>Initialize Git for this project</strong> in <strong>Project Settings</strong>. The dashboard uses the default branch from Settings. An origin is optional. For an existing Git repository, the modal reads the configured <code>origin</code> from Git. An unchanged origin stays in place. Enter an HTTPS URL to replace it, or clear the loaded field to remove it. The dashboard displays HTTP(S) origins without embedded credentials.</p>
+<p><strong>Backups → Project Tools</strong> exposes Git Fetch and fast-forward-only Pull. Use your Git client for branching, merges, conflicts, rebases, and interactive credentials. The Git hosting preference in Settings does not create accounts or configure remotes.</p>
+<p><strong>··· → Open in Explorer</strong> and <strong>Open in VS Code</strong> launch desktop programs from Apache. VS Code needs its <code>code</code> command on Apache's PATH. Desktop launches may be unavailable when Apache runs in a background Windows service session.</p>
+<h2 id="preferences-and-utilities">Preferences and utilities</h2>
+<ul>
+<li><strong>Settings</strong> offers Light, Dark, Windows XP, Blood Red, Forest, Deep Ocean, Sunrise, and Lavender. Selecting a theme changes the demo immediately. <strong>Save preferences</strong> applies it across the dashboard.</li>
+<li><strong>Starter file templates</strong> customize the generated README, license, Git ignore, changelog, and security policy for future blank projects. The dashboard substitutes <code>{{PROJECT_NAME}}</code> and <code>{{YEAR}}</code>.</li>
+<li>The header's <strong>to-do icon</strong> opens a list where you can add, complete, and delete tasks without reloading. The tasks live in the current browser's storage for the current site address.</li>
+<li><strong>phpMyAdmin</strong> opens the local database UI. A card's <strong>··· → Open in phpMyAdmin</strong> section links directly to the project's connected databases when it has any.</li>
+<li><strong>PHP Info</strong> shows the PHP environment serving the dashboard, with search, a printable view, and HTML export.</li>
+</ul>
+<p><a href="docs.php?page=backups">Backups and databases</a> · <a href="docs.php?page=setup">Setup and troubleshooting</a></p>

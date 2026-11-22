@@ -1,0 +1,168 @@
+<!-- Generated from docs/MAINTAINER_REFERENCE.md by docs/build.ps1. -->
+<h1 id="maintainer-reference">Maintainer reference</h1>
+<p><a href="docs.php?page=overview">Documentation home</a></p>
+<h2 id="application-layout">Application layout</h2>
+<p>The dashboard is a PHP application served by XAMPP Apache. It uses JSON files for dashboard state and a PHP session for form tokens, notifications, and pending database setup. MySQL or MariaDB is accessed for the projects' databases.</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Files and responsibilities</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Project dashboard</td>
+<td><code>index.php</code> handles discovery, filtering, grouping, settings, blank scaffolding, and removal. <code>project-cards.js</code> manages layout and loads the real Git origin into the settings modal.</td>
+</tr>
+<tr>
+<td>Shared PHP</td>
+<td><code>dashboard_lib.php</code> handles sessions, project and file path validation, metadata, themes, Apache public paths, archive primitives, and desktop helpers. <code>project_preferences.php</code> covers Git origin and color handling.</td>
+</tr>
+<tr>
+<td>Project creation</td>
+<td><code>project_job.php</code> orchestrates Git clone, framework creation, and template installs. <code>template_lib.php</code> defines the CMS catalog and source adapters. <code>templates.php</code> manages custom entries.</td>
+</tr>
+<tr>
+<td>Developer tools</td>
+<td><code>developer.php</code> renders project diagnostics and plain-project launch and lint controls. <code>composer_job.php</code> and <code>composer-tools.js</code> implement Composer jobs. <code>job_runner.php</code> streams Git and Composer output.</td>
+</tr>
+<tr>
+<td>Editing</td>
+<td><code>editor.php</code> contains the Monaco UI. <code>file_api.php</code> implements list, read, save, create, rename, and delete.</td>
+</tr>
+<tr>
+<td>Backups and restore</td>
+<td><code>backup.php</code> creates and downloads MXDP backups. <code>backups.php</code> catalogs and removes saved archives. <code>project_zip.php</code> exports portable ZIP bundles. <code>restore.php</code> validates and stages archive imports. <code>mxdp_lib.php</code> implements encryption, archive manifests, database tooling, and SQL discovery.</td>
+</tr>
+<tr>
+<td>Database setup</td>
+<td><code>database_setup.php</code> applies selected SQL imports and links successful results. <code>project_stats.php</code> returns cached file and database sizes for visible projects.</td>
+</tr>
+<tr>
+<td>Preferences and client code</td>
+<td><code>settings.php</code> edits dashboard preferences and starter stubs. <code>style.css</code> and <code>themes.css</code> style the interface. <code>todo.js</code> stores browser-local tasks. <code>archive-ui.js</code> handles password visibility and archive drop.</td>
+</tr>
+<tr>
+<td>Utilities</td>
+<td><code>tools.php</code> provides Git fetch/pull, project metadata, and links to setup and backup flows. <code>phpinfo.php</code> displays the runtime configuration. <code>explorer.php</code> and <code>vscode.php</code> launch desktop helpers.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="request-behavior">Request behavior</h2>
+<p>These routes support the dashboard UI. Treat their request fields and formats as internal interfaces.</p>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Request and result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>index.php</code></td>
+<td>GET applies <code>q</code>, <code>letter</code>, <code>starred</code>, and <code>page</code>. POST handles project changes with a session token and redirects after handling them.</td>
+</tr>
+<tr>
+<td><code>file_api.php</code></td>
+<td>GET supports list and read. JSON POST supports save, delete, rename, create file, and create folder with the session token.</td>
+</tr>
+<tr>
+<td><code>project_stats.php</code></td>
+<td>JSON POST accepts up to 12 project names and returns file and database display values keyed by project.</td>
+</tr>
+<tr>
+<td><code>project_origin.php</code></td>
+<td>GET returns the repository's displayed origin on demand. It uses Git configuration and removes embedded HTTP(S) credentials from the displayed URL.</td>
+</tr>
+<tr>
+<td><code>project_job.php</code>, <code>composer_job.php</code></td>
+<td>Form POST with the session token. Responses use newline-delimited JSON with stage, output, completion, or error events. Use the final event to determine success.</td>
+</tr>
+<tr>
+<td><code>restore.php</code>, <code>database_setup.php</code>, <code>project_zip.php</code></td>
+<td>Form POST with the session token for archive restore, SQL setup, and ZIP exports.</td>
+</tr>
+<tr>
+<td><code>explorer.php</code>, <code>vscode.php</code></td>
+<td>Form POST with the session token and a validated project name.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="data-and-backups">Data and backups</h2>
+<p>Paths below are relative to the dashboard directory.</p>
+<table>
+<thead>
+<tr>
+<th>Path or store</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>storage/data/settings.json</code></td>
+<td>Theme, default Git branch, hosting preference, custom templates, and optional database connection settings</td>
+</tr>
+<tr>
+<td><code>storage/data/projects.json</code></td>
+<td>Project metadata keyed by folder name. Values can include notes, database links, stars, groups and colors, launch files, and template records.</td>
+</tr>
+<tr>
+<td><code>storage/data/project_stats_cache.json</code></td>
+<td>Rebuildable file and database size estimates</td>
+</tr>
+<tr>
+<td><code>storage/data/backup_&lt;id&gt;.mxdp</code></td>
+<td>Saved encrypted archive</td>
+</tr>
+<tr>
+<td><code>storage/data/backup_&lt;id&gt;.mxdp.json</code></td>
+<td>Catalog metadata such as displayed filename, creation time, and included database count</td>
+</tr>
+<tr>
+<td><code>storage/data/mxdp_*</code></td>
+<td>Temporary protected workspaces for archives and staged SQL</td>
+</tr>
+<tr>
+<td><code>storage/data/snapshots</code></td>
+<td>Legacy storage location. The current Backups catalog lists saved MXDPs.</td>
+</tr>
+<tr>
+<td><code>storage/broilers/*.stub</code></td>
+<td>Editable starter templates, including <code>.gitignore.stub</code></td>
+</tr>
+<tr>
+<td>Browser local storage</td>
+<td>To-do list and preferred List or Tiles layout</td>
+</tr>
+<tr>
+<td>PHP session store</td>
+<td>Form token, notifications, and current database import selection</td>
+</tr>
+</tbody>
+</table>
+<p>Back up both JSON preference files, the starter stubs, and saved MXDPs with their matching catalog files when migrating the dashboard. Treat settings and archives as private. The dashboard's MXDP wraps a ZIP with AES-256-GCM and derives the key from the entered password using PBKDF2. The ZIP export uses a manifest and one SQL dump per linked database. It is unencrypted. Neither archive format includes Git history.</p>
+<h2 id="verification-after-changing-the-dashboard">Verification after changing the dashboard</h2>
+<ol>
+<li>Lint PHP and JavaScript from PowerShell in the dashboard folder. The JavaScript command requires Node.js.</li>
+<li>Open the Dashboard, Settings, Backups, and Developer pages in XAMPP. Validate actual menus and rendered controls. Checking that the page returns HTTP 200 does not establish that a control is present or functional.</li>
+<li>Use a disposable project for create/edit/rename and backup/restore checks. Check any SQL workflow against a disposable database or isolated server before running it on a project you use.</li>
+<li>Verify Apache blocks direct requests to <code>storage/data</code> and <code>storage/broilers</code>. Use an actual Git repo to verify origin reads. Use a disposable project for commands that write dependency files.</li>
+<li>Check new installs and framework links through Apache. A successful Composer invocation alone does not establish that the app's public URL works.</li>
+</ol>
+<pre><code class="language-powershell">Get-ChildItem -File -Filter '*.php' | ForEach-Object {
+    &amp; C:\xampp\php\php.exe -l $_.FullName
+    if ($LASTEXITCODE -ne 0) { throw &quot;PHP lint failed for $($_.Name)&quot; }
+}
+Get-ChildItem -File -Filter '*.js' | ForEach-Object {
+    node --check $_.FullName
+    if ($LASTEXITCODE -ne 0) { throw &quot;JavaScript syntax check failed for $($_.Name)&quot; }
+}
+git diff --check
+</code></pre>
+<p><a href="docs.php?page=setup">Setup and troubleshooting</a> · <a href="docs.php?page=backups">Backups and databases</a></p>
+<h2 id="publish-documentation-changes">Publish documentation changes</h2>
+<p>Edit the Markdown sources listed in <code>docs/pages.json</code>. Run the following from the repository root with PowerShell 7 to refresh the HTML fragments served by the dashboard's <strong>Docs</strong> page.</p>
+<pre><code class="language-powershell">pwsh -File docs/build.ps1
+</code></pre>
+<p>Include the updated Markdown and generated <code>docs/html/</code> files together. Apache serves the generated HTML through <code>docs.php</code> without requiring PowerShell or a Markdown renderer at runtime.</p>

@@ -1,3 +1,7 @@
+# Historical feature notes
+
+See the [current documentation](README.md) for implemented workflows.
+
 - check if git bash is installed or not
 - check if composer is installed or not
 - LICENSE, readme, changes, security, .gitignore

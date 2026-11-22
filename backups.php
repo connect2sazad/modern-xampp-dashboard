@@ -47,7 +47,6 @@ function h(string $value): string { return htmlspecialchars($value, ENT_QUOTES |
     <h1 class="h3 mb-0">Backups</h1>
     <nav class="d-flex gap-2">
       <a href="index.php?restore=1" class="btn btn-primary">Restore an MXDP file</a>
-      <a href="tools.php" class="btn btn-outline-secondary">Project Tools</a>
       <a href="index.php" class="btn btn-outline-secondary">Dashboard</a>
     </nav>
   </div>

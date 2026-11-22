@@ -1,0 +1,8 @@
+{
+  "overview": { "title": "Overview", "source": "README.md" },
+  "user-guide": { "title": "User guide", "source": "docs/USER_GUIDE.md" },
+  "backups": { "title": "Backups and databases", "source": "docs/BACKUPS_AND_DATABASES.md" },
+  "setup": { "title": "Setup and troubleshooting", "source": "docs/SETUP_AND_TROUBLESHOOTING.md" },
+  "maintainer": { "title": "Maintainer reference", "source": "docs/MAINTAINER_REFERENCE.md" },
+  "upgrade": { "title": "Upgrade guide", "source": "UPGRADE.md" }
+}
