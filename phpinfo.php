@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/dashboard_lib.php';
 ob_start();
 phpinfo();
 $phpinfo = ob_get_clean();
@@ -10,17 +11,17 @@ $phpinfo = preg_replace('/<h2>(.*?)<\/h2>/', '<h3 class="mt-4">$1</h3>', $phpinf
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" <?= dashThemeAttributes() ?>>
 <head>
   <meta charset="UTF-8">
   <title>PHP Info - Lyncdigit</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="themes.css">
   <style>
     body { padding: 50px 0; }
     .logo { height: 50px; }
     h1 { font-size: 2rem; margin-bottom: 1rem; }
     table { font-size: 0.875rem; }
-    th { background: #f8f9fa; }
+    th { background: var(--bs-tertiary-bg); }
     #searchBox { margin: 20px 0; }
     @media print { #controls { display: none; } }
   </style>

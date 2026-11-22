@@ -45,7 +45,6 @@ $cache = array_filter($cache, static fn($entry) => ($entry['time'] ?? 0) > $now 
 if (count($cache) > 500) $cache = array_slice($cache, -500, null, true);
 $tmp = @tempnam(DASH_DATA, 'stats_');
 if ($tmp !== false) {
-    if (@file_put_contents($tmp, json_encode($cache, JSON_INVALID_UTF8_SUBSTITUTE), LOCK_EX) !== false) @rename($tmp, $cachePath);
-    else @unlink($tmp);
+    if (@file_put_contents($tmp, json_encode($cache, JSON_INVALID_UTF8_SUBSTITUTE), LOCK_EX) === false || !@rename($tmp, $cachePath)) @unlink($tmp);
 }
 echo json_encode($results, JSON_INVALID_UTF8_SUBSTITUTE);

@@ -1,5 +1,9 @@
 <?php
 // Dashboard data is stored in JSON. No database connection is required.
+if (PHP_SAPI !== 'cli' && !in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1', '::ffff:127.0.0.1'], true)) {
+    http_response_code(403);
+    exit('The dashboard is available locally only.');
+}
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 const DASH_DATA = __DIR__ . '/storage/data';
 const DASH_STUBS = __DIR__ . '/storage/broilers';
@@ -12,15 +16,174 @@ function dashInit(): void {
 }
 function dashJson(string $name): array { if (!in_array($name,['settings','projects'],true)) throw new InvalidArgumentException('Bad store'); $v=json_decode((string)@file_get_contents(DASH_DATA.'/'.$name.'.json'),true); return is_array($v)?$v:[]; }
 function dashSave(string $name,array $data): void { if (!in_array($name,['settings','projects'],true)) throw new InvalidArgumentException('Bad store'); $path=DASH_DATA.'/'.$name.'.json'; $tmp=tempnam(DASH_DATA,'json_'); if ($tmp===false) throw new RuntimeException('Cannot write JSON'); if (file_put_contents($tmp,json_encode($data,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE),LOCK_EX)===false || !rename($tmp,$path)) { @unlink($tmp); throw new RuntimeException('Cannot save JSON'); } }
-function dashCsrf(): void { if (!hash_equals((string)($_SESSION['dashboard_csrf']??''),(string)($_POST['csrf']??''))) throw new RuntimeException('Session expired. Refresh the page.'); }
-function dashName(string $name): bool { return (bool)preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\z/D',$name) && !in_array(strtolower($name),['dashboard','phpmyadmin','xampp','webalizer'],true); }
-function dashProject(string $name,bool $existing=true): string { $base=realpath('C:/xampp/htdocs'); if (!$base || !dashName($name)) throw new RuntimeException('Invalid project name'); $candidate=$base.DIRECTORY_SEPARATOR.$name; if ($existing) { $resolved=realpath($candidate); if (!$resolved || realpath(dirname($resolved))!==$base || is_link($candidate) || !is_dir($resolved)) throw new RuntimeException('Project is missing or outside htdocs'); return $resolved; } if (file_exists($candidate) || is_link($candidate)) throw new RuntimeException('Project already exists'); return $candidate; }
+function dashCsrf($token = null): void {
+    $token = $token ?? ($_POST['csrf'] ?? null);
+    if (!is_string($token) || !hash_equals($_SESSION['dashboard_csrf'], $token)) {
+        throw new RuntimeException('Session expired. Refresh the page.');
+    }
+}
+function dashName(string $name): bool {
+    return (bool)preg_match('/\A[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}\z/', $name)
+        && substr($name, -1) !== '.'
+        && !preg_match('/\A(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i', $name)
+        && !in_array(strtolower($name), ['dashboard', 'phpmyadmin', 'xampp', 'webalizer'], true);
+}
+function dashProject(string $name, bool $existing = true): string {
+    $base = realpath('C:/xampp/htdocs');
+    if (!$base || !dashName($name)) throw new RuntimeException('Invalid project name');
+    $candidate = $base . DIRECTORY_SEPARATOR . $name;
+    if (!$existing) {
+        if (file_exists($candidate) || is_link($candidate)) throw new RuntimeException('Project already exists');
+        return $candidate;
+    }
+    $resolved = realpath($candidate);
+    if (!$resolved || strcasecmp($resolved, $candidate) !== 0 || is_link($candidate) || !is_dir($resolved)) {
+        throw new RuntimeException('Project is missing or outside htdocs');
+    }
+    return $resolved;
+}
+function dashPathParts(string $relative, bool $allowApacheConfig = false): array {
+    $parts = explode('/', str_replace('\\', '/', $relative));
+    foreach ($parts as $part) {
+        if ($part === '' || preg_match('/[. ]$/D', $part)
+            || preg_match('/[\x00-\x1f:<>|?*"]/', $part)
+            || preg_match('/\A(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]) *(?:\.|$)/iu', $part)
+            || strtolower($part) === '.git' || (!$allowApacheConfig && strtolower($part) === '.htaccess')) {
+            throw new RuntimeException('Invalid relative path.');
+        }
+    }
+    return $parts;
+}
+function dashFilePath(string $root, string $relative, bool $allowMissing = false): string {
+    $parts = dashPathParts($relative);
+    $path = $root;
+    foreach ($parts as $index => $part) {
+        $path .= DIRECTORY_SEPARATOR . $part;
+        $resolved = realpath($path);
+        if (is_link($path) || ($resolved !== false && strcasecmp($resolved, $path) !== 0)) {
+            throw new RuntimeException('Linked paths are unavailable.');
+        }
+        if ($resolved === false && (!$allowMissing || $index !== count($parts) - 1)) {
+            throw new RuntimeException('Path does not exist.');
+        }
+    }
+    return $path;
+}
+function dashWrite(string $path, string $contents): void {
+    $tmp = tempnam(dirname($path), 'dash_');
+    if ($tmp === false) throw new RuntimeException('Could not create temporary file.');
+    try {
+        if (@file_put_contents($tmp, $contents) !== strlen($contents) || !@rename($tmp, $path)) {
+            throw new RuntimeException('Could not save file.');
+        }
+    } finally {
+        if (is_file($tmp)) @unlink($tmp);
+    }
+}
+const DASH_FRAMEWORKS = [
+    'laravel' => ['label' => 'Laravel', 'package' => 'laravel/laravel', 'directory' => 'public'],
+    'yii' => ['label' => 'Yii 2', 'package' => 'yiisoft/yii2-app-basic', 'directory' => 'web'],
+    'cakephp' => ['label' => 'CakePHP', 'package' => 'cakephp/app', 'directory' => 'webroot'],
+    'symfony' => ['label' => 'Symfony', 'package' => 'symfony/skeleton', 'directory' => 'public'],
+    'codeigniter' => ['label' => 'CodeIgniter 4', 'package' => 'codeigniter4/appstarter', 'directory' => 'public'],
+];
+
+function dashWebEntry(string $path, string $framework = '', ?string $directory = null): ?string {
+    $preferred = $directory ?? (DASH_FRAMEWORKS[$framework]['directory'] ?? null);
+    $directories = $preferred === null ? ['', 'public', 'web', 'webroot'] : [$preferred];
+    foreach ($directories as $directory) {
+        $prefix = $directory === '' ? '' : $directory . '/';
+        foreach (['index.php', 'index.html', 'index.htm'] as $entry) {
+            try {
+                if (is_file(dashFilePath($path, $prefix . $entry))) return $prefix . $entry;
+            } catch (RuntimeException $e) {
+                continue;
+            }
+        }
+    }
+    return null;
+}
+
+function dashAppUrl(string $project, ?string $entry): ?string {
+    if ($entry === null) return null;
+    $directory = substr($entry, 0, strrpos('/' . $entry, '/'));
+    $target = basename($entry) === 'index.htm' ? $entry : $directory;
+    return '../' . rawurlencode($project) . '/' . $target;
+}
+
+function dashProjectFile(string $root, string $relative, array $extensions): string {
+    $file = implode('/', dashPathParts($relative));
+    if (!in_array(strtolower(pathinfo($file, PATHINFO_EXTENSION)), $extensions, true)
+        || !is_file(dashFilePath($root, $file))) {
+        throw new RuntimeException('Choose an existing ' . implode(', ', $extensions) . ' file inside this project.');
+    }
+    return $file;
+}
+
+function dashProjectLaunch(string $path, array $info): array {
+    $project = basename($path);
+    $framework = $info['framework'] ?? '';
+    $saved = $info['launch_file'] ?? '';
+    if (!isset($info['template']) && !isset(DASH_FRAMEWORKS[$framework]) && is_string($saved) && $saved !== '') {
+        try {
+            $entry = dashProjectFile($path, $saved, ['php', 'html', 'htm']);
+            return [$entry, '../' . rawurlencode($project) . '/' . implode('/', array_map('rawurlencode', explode('/', $entry)))];
+        } catch (RuntimeException $e) {
+            // A file may have been moved since saving this preference.
+        }
+    }
+    $entry = dashWebEntry($path, $framework, $info['template']['directory'] ?? null);
+    return [$entry, dashAppUrl($project, $entry)];
+}
+
+function dashConfigureFrameworkWebRoot(string $path, string $framework): bool {
+    return dashConfigurePublicDirectory($path, DASH_FRAMEWORKS[$framework]['directory']);
+}
+
+function dashConfigurePublicDirectory(string $path, string $directory): bool {
+    if ($directory === '' || dashWebEntry($path, '', $directory) === null) return false;
+    $config = $path . '/.htaccess';
+    if (file_exists($config) || is_link($config)) return false;
+    $file = @fopen($config, 'xb');
+    if ($file === false) throw new RuntimeException('Could not create the Apache project configuration.');
+    $rules = "# Created by XAMPP Dashboard\nOptions -Indexes\nRewriteEngine On\n"
+        . "RewriteRule ^$ %{REQUEST_URI}" . $directory . "/ [R=302,L,NE]\n"
+        . "RewriteRule ^(?!" . $directory . "(?:/|$)) - [F,L]\n";
+    $written = fwrite($file, $rules);
+    fclose($file);
+    if ($written !== strlen($rules)) {
+        @unlink($config);
+        throw new RuntimeException('Could not finish the Apache project configuration.');
+    }
+    return true;
+}
+
 function dashRemote(string $url): bool { $p=parse_url($url); return is_array($p) && ($p['scheme']??'')==='https' && !empty($p['host']) && empty($p['user']) && empty($p['pass']) && !preg_match('/[\r\n]/',$url); }
 function dashExec(string $command): string { if (!function_exists('exec')) throw new RuntimeException('Command execution is disabled in PHP'); $out=[]; $status=1; @exec($command.' 2>&1',$out,$status); if ($status!==0) throw new RuntimeException('Command failed (exit '.$status.'). Check Git/Composer installation, credentials, or project state.'); return implode("\n",array_slice($out,0,15)); }
 function dashStub(string $name,string $project): string { $allowed=['README.md','LICENSE','.gitignore','CHANGELOG.md','SECURITY.md']; if (!in_array($name,$allowed,true)) throw new RuntimeException('Invalid stub'); return str_replace(['{{PROJECT_NAME}}','{{YEAR}}'],[$project,date('Y')],(string)file_get_contents(DASH_STUBS.'/'.$name.'.stub')); }
 function dashMeta(string $project,array $changes): void { $data=dashJson('projects'); $data[$project]=array_merge($data[$project]??[], $changes, ['updated_at'=>date(DATE_ATOM)]); dashSave('projects',$data); }
 function dashNotice(string $message,bool $error=false): void { $_SESSION[$error?'dashboard_flash_error':'dashboard_flash_success']=$message; }
-function dashRedirect(string $page='index.php'): never { header('Location: '.$page,true,303); exit; }
+function dashRedirect(string $page='index.php'): void { header('Location: '.$page,true,303); exit; }
+
+const DASH_THEMES = [
+    'light' => ['label' => 'Light', 'mode' => 'light'],
+    'dark' => ['label' => 'Dark', 'mode' => 'dark'],
+    'xp' => ['label' => 'Windows XP', 'mode' => 'light'],
+    'blood-red' => ['label' => 'Blood Red', 'mode' => 'dark'],
+    'forest' => ['label' => 'Forest', 'mode' => 'dark'],
+    'ocean' => ['label' => 'Deep Ocean', 'mode' => 'dark'],
+    'sunrise' => ['label' => 'Sunrise', 'mode' => 'light'],
+    'lavender' => ['label' => 'Lavender', 'mode' => 'light'],
+];
+
+function dashTheme(string $name): string {
+    return isset(DASH_THEMES[$name]) ? $name : 'light';
+}
+
+function dashThemeAttributes(?array $settings = null): string {
+    $theme = dashTheme(($settings ?? dashJson('settings'))['theme'] ?? '');
+    return 'data-dashboard-theme="' . $theme . '" data-bs-theme="' . DASH_THEMES[$theme]['mode'] . '"';
+}
 
 function dashBytes(int $bytes): string { $units=['B','KiB','MiB','GiB','TiB']; $i=0; $n=(float)$bytes; while($n>=1024 && $i<count($units)-1){$n/=1024;$i++;} return number_format($n,$i?1:0).' '.$units[$i]; }
 function dashFolderBytes(string $root): ?int {
@@ -35,5 +198,142 @@ function dashDbSizes(array $names): array {
  }catch(Throwable $e){} return $out;
 }
 function dashDbNames(array $info): array { $value=(string)($info['databases']??$info['database']??'');return array_values(array_unique(array_filter(array_map('trim',explode(',',$value))))); }
+
+function dashCommandAvailable(string $program): bool {
+    if (!function_exists('exec')) return false;
+    @exec(escapeshellarg($program) . ' --version 2>&1', $output, $status);
+    return $status === 0;
+}
+
+function dashArchive(string $root, string $target, int $limit = PHP_INT_MAX): void {
+    if (!class_exists('ZipArchive')) throw new RuntimeException('Enable the PHP ZIP extension');
+    $zip = new ZipArchive();
+    if ($zip->open($target, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        throw new RuntimeException('Cannot open ZIP archive.');
+    }
+    try {
+        $tree = new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS);
+        $safeTree = new RecursiveCallbackFilterIterator($tree, static function ($item) {
+            $path = $item->getPathname();
+            $resolved = realpath($path);
+            return !$item->isLink() && $resolved !== false && strcasecmp($path, $resolved) === 0
+                && strtolower($item->getFilename()) !== '.git';
+        });
+        $total = 0;
+        $count = 0;
+        foreach (new RecursiveIteratorIterator($safeTree, RecursiveIteratorIterator::SELF_FIRST) as $item) {
+            if (++$count > 10000 || (!$item->isDir() && ($total += $item->getSize()) > $limit)) {
+                throw new RuntimeException('Project exceeds the backup file count or size limit.');
+            }
+            $relative = str_replace('\\', '/', substr($item->getPathname(), strlen($root) + 1));
+            $added = $item->isDir() ? $zip->addEmptyDir($relative) : $zip->addFile($item->getPathname(), $relative);
+            if (!$added) throw new RuntimeException('Could not add an entry to the archive.');
+        }
+        if (defined('ZipArchive::AFL_CREATE_OR_KEEP_FILE_FOR_EMPTY_ARCHIVE')) {
+            $zip->setArchiveFlag(ZipArchive::AFL_CREATE_OR_KEEP_FILE_FOR_EMPTY_ARCHIVE, true);
+        }
+        if (!$zip->close()) throw new RuntimeException('Could not finish the archive.');
+    } catch (Throwable $e) {
+        @unlink($target);
+        throw $e;
+    }
+}
+
+function dashRestore(string $source, string $destination, string $wrapper = ''): void {
+    $zip = new ZipArchive();
+    if ($zip->open($source) !== true) throw new RuntimeException('Invalid ZIP archive.');
+    $created = [];
+    $entries = [];
+    $total = 0;
+    try {
+        if ($zip->numFiles > 10000) throw new RuntimeException('Too many archive entries.');
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            if ($stat === false) throw new RuntimeException('Invalid archive entry.');
+            $entry = str_replace('\\', '/', $stat['name']);
+            if ($wrapper !== '') {
+                if ($entry === $wrapper . '/') continue;
+                if (!str_starts_with($entry, $wrapper . '/')) {
+                    throw new RuntimeException('The template ZIP has an unexpected directory layout.');
+                }
+                $entry = substr($entry, strlen($wrapper) + 1);
+            }
+            $directory = substr($entry, -1) === '/';
+            $relative = $directory ? substr($entry, 0, -1) : $entry;
+            $parts = dashPathParts($relative, true);
+            $key = strtolower($relative);
+            $total += $stat['size'];
+            if (isset($entries[$key]) || $total > 200 * 1024 * 1024
+                || !$zip->getExternalAttributesIndex($i, $system, $attributes)
+                || ($system === ZipArchive::OPSYS_UNIX && !in_array(($attributes >> 16) & 0170000, [0, 0100000, 0040000], true))) {
+                throw new RuntimeException('Unsafe or oversized ZIP archive.');
+            }
+            $entries[$key] = [$i, $parts, $directory, $stat['size']];
+        }
+        if (!@mkdir($destination, 0755)) throw new RuntimeException('Cannot create project directory.');
+        $created[$destination] = true;
+        foreach ($entries as [$index, $parts, $directory, $size]) {
+            $target = $destination;
+            $filename = $directory ? null : array_pop($parts);
+            foreach ($parts as $part) {
+                $target .= DIRECTORY_SEPARATOR . $part;
+                if (!is_dir($target)) {
+                    if (!@mkdir($target, 0755)) throw new RuntimeException('Cannot create archive directory.');
+                    $created[$target] = true;
+                }
+            }
+            if ($filename === null) continue;
+            $target .= DIRECTORY_SEPARATOR . $filename;
+            $input = $zip->getStreamIndex($index);
+            if ($input === false) throw new RuntimeException('Cannot read archive entry.');
+            try {
+                $output = @fopen($target, 'xb');
+                if ($output === false) throw new RuntimeException('Cannot create restored file.');
+                $created[$target] = false;
+                try {
+                    if (stream_copy_to_stream($input, $output, $size + 1) !== $size) {
+                        throw new RuntimeException('Could not restore complete file.');
+                    }
+                } finally {
+                    fclose($output);
+                }
+            } finally {
+                fclose($input);
+            }
+        }
+    } catch (Throwable $e) {
+        foreach (array_reverse($created, true) as $path => $directory) {
+            $directory ? @rmdir($path) : @unlink($path);
+        }
+        throw $e;
+    } finally {
+        $zip->close();
+    }
+}
+
+function dashLaunch(string $program): void {
+    header('Content-Type: text/plain; charset=utf-8');
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        exit('POST required.');
+    }
+    try {
+        dashCsrf();
+        $path = dashProject($_POST['project'] ?? '');
+        session_write_close();
+        if (!function_exists('exec')) throw new RuntimeException('Command execution is disabled in PHP.');
+        if ($program === 'code') {
+            @exec('where.exe code 2>NUL', $matches, $status);
+            if ($status !== 0) throw new RuntimeException('VS Code was not found in Apache’s PATH.');
+        }
+        $launcher = $program === 'explorer' ? 'explorer.exe ' : '/b code -- ';
+        @exec('start "" ' . $launcher . escapeshellarg($path) . ' >NUL 2>&1', $output, $status);
+        if ($status !== 0) throw new RuntimeException('Could not launch ' . $program);
+        http_response_code(204);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo $e->getMessage();
+    }
+}
 
 dashInit();
